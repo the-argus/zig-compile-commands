@@ -167,7 +167,7 @@ fn makeCdb(step: *std.Build.Step, prog_node: *std.Progress.Node) anyerror!void {
     defer file.close();
 
     const cwd_string = try dirToString(cwd, allocator);
-    const c_sources = getCSources(step.owner, compile_steps);
+    const c_sources = getCSources(step.owner, compile_steps.?);
 
     // fill compile command entries, one for each file
     for (c_sources) |c_source_file_set| {
