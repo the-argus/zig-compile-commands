@@ -50,7 +50,7 @@ fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.Comp
                         std.log.warn("Unable to get directory name for installed header file {s} ", .{file});
                         continue;
                     };
-                    success = std.mem.eql(std.fs.path.basename(dir), "include");
+                    success = std.mem.eql(u8, std.fs.path.basename(dir), "include");
                     if (success) break;
                 }
                 if (!success) {
