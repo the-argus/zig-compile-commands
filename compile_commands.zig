@@ -64,8 +64,8 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.CompileStep) []*CSourceF
     var index: u32 = 0;
 
     // list may be appended to during the loop, so use a while
-    while (index < compile_steps_list.?.items.len) {
-        const step = compile_steps_list.?.items[index];
+    while (index < compile_steps_list.items.len) {
+        const step = compile_steps_list.items[index];
 
         var shared_flags = std.ArrayList([]const u8).init(allocator);
         defer shared_flags.deinit();
