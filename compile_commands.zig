@@ -40,11 +40,26 @@ fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.Comp
                 install_file.dir,
                 install_file.dest_rel_path,
             );
+            // get the dirname, specifically the one called "include"
+            var dir = file;
+            {
+                const max_depth = 20;
+                var success = false;
+                for (0..max_depth) |_| {
+                    dir = if (std.fs.path.dirname(file)) |dirname| dirname else {
+                        std.log.warn("Unable to get directory name for installed header file {s} ", .{file});
+                        continue;
+                    };
+                    success = std.mem.eql(std.fs.path.basename(dir), "include");
+                    if (success) break;
+                }
+                if (!success) {
+                    std.log.warn("Header file installed in a directory that is not within an \"include\" directory, ignoring: {s} ", .{file});
+                    continue;
+                }
+            }
             // just add the directory of that file. often creates duplicates
-            dirs.append(if (std.fs.path.dirname(file)) |dirname| dirname else {
-                std.log.warn("Unable to get directory name for installed header file {s} ", .{file});
-                continue;
-            }) catch @panic("OOM");
+            dirs.append(dir) catch @panic("OOM");
         }
     }
     return dirs;
