@@ -17,9 +17,9 @@ First, `build.zig.zon`:
     .version = "0.0.1",
 
     .dependencies = .{
-        .zig_compile_commands = .{
-            .url = "https://github.com/the-argus/zig-compile-commands/archive/SOME_REVISION_HERE.tar.gz",
-            .hash = "blahblahblah",
+        .compile_commands = .{
+            .url = "https://github.com/the-argus/zig-compile-commands/archive/090f6ca767de238f7eae4e13f91ecc7a299153c4.tar.gz",
+            .hash = "1220ad678342c3191edebd10df1a883b7a71e245d4ee91da26b7cf6b30e4ee8fb78d",
         },
     }
 }
@@ -29,7 +29,7 @@ Then, bring that into your `build.zig`:
 
 ```zig
 // import the dependency
-const zcc = @import("zig_compile_commands");
+const zcc = @import("compile_commands");
 
 pub fn build(b: *std.Build) !void {
     // make a list of targets that have include files and c source files
