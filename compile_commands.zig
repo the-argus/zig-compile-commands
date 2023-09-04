@@ -53,6 +53,7 @@ fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.Comp
                     dirs.append(install_dir.options.install_subdir) catch @panic("OOM");
                 }
             },
+            else => {},
         }
     }
     return dirs;
