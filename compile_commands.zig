@@ -33,18 +33,26 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Compile
 fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.CompileStep) std.ArrayList([]const u8) {
     var dirs = std.ArrayList([]const u8).init(allocator);
     for (step.installed_headers.items) |header_step| {
-        if (header_step.id == .install_file) {
-            const install_file = header_step.cast(std.Build.InstallFileStep) orelse @panic("Programmer error generating compile_commands.json");
-            // path to specific file being installed
-            const file = install_file.dest_builder.getInstallPath(
-                install_file.dir,
-                install_file.dest_rel_path,
-            );
-            // just add the directory of that file. often creates duplicates
-            dirs.append(if (std.fs.path.dirname(file)) |dirname| dirname else {
-                std.log.warn("Unable to get directory name for installed header file {s} ", .{file});
-                continue;
-            }) catch @panic("OOM");
+        switch (header_step.id) {
+            .install_file => {
+                const install_file = header_step.cast(std.Build.Step.InstallFile) orelse @panic("Programmer error generating compile_commands.json");
+                // path to specific file being installed
+                const file = install_file.dest_builder.getInstallPath(
+                    install_file.dir,
+                    install_file.dest_rel_path,
+                );
+                // just add the directory of that file. often creates duplicates
+                dirs.append(if (std.fs.path.dirname(file)) |dirname| dirname else {
+                    std.log.warn("Unable to get directory name for installed header file {s} ", .{file});
+                    continue;
+                }) catch @panic("OOM");
+            },
+            .install_dir => {
+                const install_dir: *std.Build.Step.InstallDir = header_step.cast(std.Build.Step.InstallDir) orelse @panic("Programmer error generating compile_commands.json");
+                if (install_dir.options.install_dir == .header) {
+                    dirs.append(install_dir.options.install_subdir) catch @panic("OOM");
+                }
+            },
         }
     }
     return dirs;
