@@ -59,7 +59,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.CompileStep) []*CSourceF
     // move the compile steps into a mutable dynamic array, so we can add
     // any child steps
     var compile_steps_list = std.ArrayList(*std.Build.CompileStep).init(b.allocator);
-    compile_steps_list.appendSlice(steps);
+    compile_steps_list.appendSlice(steps) catch @panic("OOM");
 
     var index: u32 = 0;
 
