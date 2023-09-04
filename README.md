@@ -46,14 +46,10 @@ pub fn build(b: *std.Build) !void {
     // maybe some other targets, too?
     targets.append(exe_2) catch @panic("OOM");
     targets.append(lib) catch @panic("OOM");
-    
-    // once we're done making target, put them into the static memory of the zcc
-    // module
-    zcc.registerCompileSteps(try targets.toOwnedSlice());
 
     // add a step called "cdb" (Compile commands DataBase) for making
     // compile_commands.json. could be named anything. cdb is just quick to type
-    zcc.createStep(b, "cdb");
+    zcc.createStep(b, "cdb", try targets.toOwnedSlice());
 }
 ```
 
