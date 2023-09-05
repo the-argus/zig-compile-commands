@@ -30,7 +30,7 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Compile
 
 /// Find all the header installation directories for a step.
 /// returns an owned arraylist
-fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.CompileStep) std.ArrayList([]const u8) {
+pub fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.CompileStep) std.ArrayList([]const u8) {
     var dirs = std.ArrayList([]const u8).init(allocator);
     for (step.installed_headers.items) |header_step| {
         if (header_step.id == .install_file) {
