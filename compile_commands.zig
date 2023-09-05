@@ -28,43 +28,69 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Compile
     cdb_step.dependOn(step);
 }
 
-/// Find all the header installation directories for a step.
-/// returns an owned arraylist
-pub fn extractHeaderDirsFromStep(allocator: std.mem.Allocator, step: *std.Build.CompileStep) std.ArrayList([]const u8) {
-    var dirs = std.ArrayList([]const u8).init(allocator);
-    for (step.installed_headers.items) |header_step| {
-        if (header_step.id == .install_file) {
-            const install_file = header_step.cast(std.Build.InstallFileStep) orelse @panic("Programmer error generating compile_commands.json");
-            // path to specific file being installed
-            const file = install_file.dest_builder.getInstallPath(
-                install_file.dir,
-                install_file.dest_rel_path,
-            );
-            // get the dirname, specifically the one called "include"
-            var dir = file;
-            {
-                const max_depth = 20;
-                var success = false;
-                for (0..max_depth) |_| {
-                    if (std.fs.path.dirname(dir)) |dirname| {
-                        dir = dirname;
-                    } else {
-                        // reached root directory
-                        break;
-                    }
-                    success = std.mem.eql(u8, std.fs.path.basename(dir), "include");
-                    if (success) break;
-                }
-                if (!success) {
-                    std.log.warn("Header file installed in a directory that is not within an \"include\" directory, ignoring: {s} ", .{file});
-                    continue;
-                }
+/// Errors turning the build graph into compile command strings.
+const GraphSerializeError = error{InvalidHeader};
+
+/// Get the include directory, needed for the -I flag, for a given InstallFile
+/// step. This is usually created by CompileStep.installHeader().
+pub fn extractIncludeDirFromInstallFileStep(step: *std.Build.Step.InstallFile) GraphSerializeError![]const u8 {
+    // path to specific file being installed
+    const file = step.dest_builder.getInstallPath(
+        step.dir,
+        step.dest_rel_path,
+    );
+    // get the dirname, specifically the one called "include"
+    var dir = file;
+    {
+        const max_depth = 20;
+        var success = false;
+        for (0..max_depth) |_| {
+            if (std.fs.path.dirname(dir)) |dirname| {
+                dir = dirname;
+            } else {
+                // reached root directory
+                break;
             }
-            // just add the directory of that file. often creates duplicates
-            dirs.append(dir) catch @panic("OOM");
+            success = std.mem.eql(u8, std.fs.path.basename(dir), "include");
+            if (success) break;
+        }
+        if (!success) {
+            std.log.warn("Header file installed in a directory that is not within an \"include\" directory, ignoring: {s} ", .{file});
+            return GraphSerializeError.InvalidHeader;
         }
     }
-    return dirs;
+    return dir;
+}
+
+/// A compilation step has an "include_dirs" array list, which contains paths as
+/// well as other compile steps. This loops until all the include directories
+/// necessary for good intellisense on the files compile by this step are found.
+pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.CompileStep) []const []const u8 {
+    var dirs = std.ArrayList([]const u8).init(b.allocator);
+
+    for (step.include_dirs.items) |include_dir| {
+        switch (include_dir) {
+            .other_step => |other_step| {
+                // if we are including another step, that step probably installs
+                // some headers. look through all of those and get their dirs.
+                for (other_step.installed_headers.items) |header_step| {
+                    if (header_step.id != .install_file) continue;
+                    const install_file = header_step.cast(std.Build.InstallFileStep) orelse @panic("Programmer error generating compile_commands.json");
+                    dirs.append(extractIncludeDirFromInstallFileStep(install_file) catch |err| {
+                        switch (err) {
+                            GraphSerializeError.InvalidHeader => continue,
+                        }
+                    }) catch @panic("OOM");
+                }
+            },
+            .path => |path| dirs.append(path.getPath(b)) catch @panic("OOM"),
+            .path_system => |path| dirs.append(path.getPath(b)) catch @panic("OOM"),
+            // TODO: support this
+            .config_header_step => {},
+        }
+    }
+
+    return dirs.toOwnedSlice() catch @panic("OOM");
 }
 
 // NOTE: some of the CSourceFiles pointed at by the elements of the returned
@@ -102,20 +128,9 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.CompileStep) []*CSourceF
             shared_flags.append(linkFlag(allocator, "c++")) catch @panic("OOM");
         }
 
-        // do the same for include directories
-        for (step.include_dirs.items) |include_dir| {
-            switch (include_dir) {
-                .other_step => |other_step| {
-                    const arraylist_header_dirs = extractHeaderDirsFromStep(allocator, other_step);
-                    for (arraylist_header_dirs.items) |header_dir| {
-                        shared_flags.append(includeFlag(allocator, header_dir)) catch @panic("OOM");
-                    }
-                },
-                .path => |path| shared_flags.append(includeFlag(allocator, path.getPath(b))) catch @panic("OOM"),
-                .path_system => |path| shared_flags.append(includeFlag(allocator, path.getPath(b))) catch @panic("OOM"),
-                // TODO: support this
-                .config_header_step => {},
-            }
+        // make flags out of all include directories
+        for (extractIncludeDirsFromCompileStep(b, step)) |include_dir| {
+            shared_flags.append(includeFlag(b.allocator, include_dir)) catch @panic("OOM");
         }
 
         for (step.link_objects.items) |link_object| {

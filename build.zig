@@ -1,7 +1,9 @@
 const std = @import("std");
 
-pub const createStep = @import("compile_commands.zig").createStep;
-pub const extractHeaderDirsFromStep = @import("compile_commands.zig").extractHeaderDirsFromStep;
+const cc = @import("compile_commands.zig");
+pub const createStep = cc.createStep;
+pub const extractIncludeDirsFromCompileStep = cc.extractIncludeDirsFromCompileStep;
+pub const extractIncludeDirFromInstallFileStep = cc.extractIncludeDirFromInstallFileStep;
 
 pub fn build(b: *std.Build) void {
     _ = b;
