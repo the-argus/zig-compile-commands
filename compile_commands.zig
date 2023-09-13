@@ -205,7 +205,11 @@ fn makeCdb(step: *std.Build.Step, prog_node: *std.Progress.Node) anyerror!void {
     for (c_sources) |c_source_file_set| {
         const flags = c_source_file_set.flags;
         for (c_source_file_set.files) |c_file| {
-            const file_str = std.fs.path.join(allocator, &[_][]const u8{ cwd_string, c_file }) catch @panic("OOM");
+            const file_str = if (std.fs.path.isAbsolute(c_file))
+                c_file
+            else
+                std.fs.path.join(allocator, &[_][]const u8{ cwd_string, c_file }) catch @panic("OOM");
+
             const output_str = std.fmt.allocPrint(allocator, "{s}.o", .{file_str}) catch @panic("OOM");
 
             var arguments = std.ArrayList([]const u8).init(allocator);
