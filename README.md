@@ -33,7 +33,7 @@ const zcc = @import("compile_commands");
 
 pub fn build(b: *std.Build) !void {
     // make a list of targets that have include files and c source files
-    var targets = std.ArrayList(*std.Build.CompileStep).init(b.allocator);
+    var targets = std.ArrayList(*std.Build.CompileStep).init(b.allocator) catch @panic("OOM");
 
     // create your executable
     const exe = b.addExecutable(.{
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) !void {
 
     // add a step called "cdb" (Compile commands DataBase) for making
     // compile_commands.json. could be named anything. cdb is just quick to type
-    zcc.createStep(b, "cdb", try targets.toOwnedSlice());
+    zcc.createStep(b, "cdb", targets.toOwnedSlice() catch @panic("OOM"));
 }
 ```
 
