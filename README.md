@@ -33,7 +33,7 @@ const zcc = @import("compile_commands");
 
 pub fn build(b: *std.Build) !void {
     // make a list of targets that have include files and c source files
-    var targets = std.ArrayList(*std.Build.CompileStep).init(b.allocator) catch @panic("OOM");
+    var targets = std.ArrayList(*std.Build.CompileStep).init(b.allocator);
 
     // create your executable
     const exe = b.addExecutable(.{
