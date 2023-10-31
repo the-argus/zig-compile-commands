@@ -90,6 +90,25 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Compile
         }
     }
 
+    for (step.installed_headers.items) |header| {
+        const pathstr = extractIncludeDirFromInstallFileStep(header.cast(std.Build.Step.InstallFile).?) catch |err| {
+            switch (err) {
+                GraphSerializeError.InvalidHeader => continue,
+            }
+        };
+
+        // make sure the installed header's directory isn't already in the list
+        var should_add = true;
+        for (dirs.items) |item| {
+            if (std.mem.eql(u8, item, pathstr)) {
+                should_add = false;
+                break;
+            }
+        }
+
+        if (should_add) dirs.append(pathstr) catch @panic("OOM");
+    }
+
     return dirs.toOwnedSlice() catch @panic("OOM");
 }
 
