@@ -39,10 +39,10 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
                     // if the directory has exclude patterns set, we will ignore those.
                     // TODO: switch this to include the output directory instead of the source directory, so
                     // that include / exclude patterns are respected
-                    lazy_path_output.append(header_step.getSource());
+                    lazy_path_output.append(header_step.getSource()) catch @panic("OOM");
                 }
                 // recurse- this step may have included child dependencies
-                var local_lazy_path_output = std.ArrayList(std.Build.LazyPath).init(b.allocator) catch @panic("OOM");
+                var local_lazy_path_output = std.ArrayList(std.Build.LazyPath).init(b.allocator);
                 defer local_lazy_path_output.deinit();
                 extractIncludeDirsFromCompileStepInner(b, other_step, local_lazy_path_output);
                 lazy_path_output.appendSlice(local_lazy_path_output.items);
@@ -85,8 +85,8 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Co
     // TODO: should lazy paths be resolved later? it says to only use the
     // function during the make phase so it seems possible that compile commands
     // would get built before paths are resolved and then stuff doesn't work
-    for (dirs) |lazy_path| {
-        dirs_as_strings.append(lazy_path.getPath(b));
+    for (dirs.items) |lazy_path| {
+        dirs_as_strings.append(lazy_path.getPath(b)) catch @panic("OOM");
     }
 
     return dirs_as_strings.toOwnedSlice() catch @panic("OOM");
