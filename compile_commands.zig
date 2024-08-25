@@ -114,7 +114,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSource
         defer shared_flags.deinit();
 
         // catch all the system libraries being linked, make flags out of them
-        for (step.link_objects.items) |link_object| {
+        for (step.root_module.link_objects.items) |link_object| {
             switch (link_object) {
                 .system_lib => |lib| shared_flags.append(linkFlag(allocator, lib.name)) catch @panic("OOM"),
                 else => {},
@@ -133,7 +133,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSource
             shared_flags.append(includeFlag(b.allocator, include_dir)) catch @panic("OOM");
         }
 
-        for (step.link_objects.items) |link_object| {
+        for (step.root_module.link_objects.items) |link_object| {
             switch (link_object) {
                 .static_path => {
                     continue;
