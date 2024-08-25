@@ -2,7 +2,7 @@
 
 A simple zig module to generate compile_commands.json from a slice of build targets.
 
-Intended for Zig v0.11.0
+Intended for Zig v0.13.0
 
 Relies on static variables to store the targets, so that the make step can
 access them.
@@ -18,8 +18,8 @@ First, `build.zig.zon`:
 
     .dependencies = .{
         .compile_commands = .{
-            .url = "https://github.com/the-argus/zig-compile-commands/archive/090f6ca767de238f7eae4e13f91ecc7a299153c4.tar.gz",
-            .hash = "1220ad678342c3191edebd10df1a883b7a71e245d4ee91da26b7cf6b30e4ee8fb78d",
+            .url = "https://github.com/the-argus/zig-compile-commands/archive/697abd2d24dc73fe0ead1849f17c43f18c038bc6.tar.gz",
+            .hash = "12204f3f579b3072cddf75f31514c55b0bd30e09c755dd2389a0aa8bba79b7311be9",
         },
     }
 }
