@@ -53,15 +53,15 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
             .config_header_step => {},
             // TODO: test these...
             .framework_path => |path| {
-                std.log.warn("Found framework include path- compile commands generation for this is untested.");
+                std.log.warn("Found framework include path- compile commands generation for this is untested.", .{});
                 lazy_path_output.append(path) catch @panic("OOM");
             },
             .framework_path_system => |path| {
-                std.log.warn("Found system framework include path- compile commands generation for this is untested.");
+                std.log.warn("Found system framework include path- compile commands generation for this is untested.", .{});
                 lazy_path_output.append(path) catch @panic("OOM");
             },
             .path_after => |path| {
-                std.log.warn("Found path_after- compile commands generation for this is untested.");
+                std.log.warn("Found path_after- compile commands generation for this is untested.", .{});
                 lazy_path_output.append(path) catch @panic("OOM");
             },
         }
