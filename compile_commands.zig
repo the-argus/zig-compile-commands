@@ -68,7 +68,7 @@ pub fn extractIncludeDirFromInstallFileStep(step: *std.Build.Step.InstallFile) G
 pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Compile) []const []const u8 {
     var dirs = std.ArrayList([]const u8).init(b.allocator);
 
-    for (step.include_dirs.items) |include_dir| {
+    for (step.root_module.include_dirs.items) |include_dir| {
         switch (include_dir) {
             .other_step => |other_step| {
                 // if we are including another step, that step probably installs
@@ -145,6 +145,9 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSource
                     continue;
                 },
                 .assembly_file => {
+                    continue;
+                },
+                .win32_resource_file => {
                     continue;
                 },
                 .c_source_file => {
