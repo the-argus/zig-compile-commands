@@ -13,7 +13,7 @@ const CompileCommandEntry = struct {
 };
 
 pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.CompileStep) void {
-    var step = b.allocator.create(std.Build.Step) catch @panic("Allocation failure, probably OOM");
+    const step = b.allocator.create(std.Build.Step) catch @panic("Allocation failure, probably OOM");
 
     compile_steps = targets;
 
@@ -153,7 +153,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.CompileStep) []*CSourceF
                     var files_mem = allocator.alloc([]const u8, 1) catch @panic("Allocation failure, probably OOM");
                     files_mem[0] = path;
 
-                    var source_file = allocator.create(CSourceFiles) catch @panic("Allocation failure, probably OOM");
+                    const source_file = allocator.create(CSourceFiles) catch @panic("Allocation failure, probably OOM");
 
                     var flags = std.ArrayList([]const u8).init(allocator);
                     flags.appendSlice(link_object.c_source_file.flags) catch @panic("OOM");
@@ -188,7 +188,7 @@ fn makeCdb(step: *std.Build.Step, prog_node: *std.Progress.Node) anyerror!void {
         @panic("No compile steps registered. Programmer error in createStep");
     }
     _ = prog_node;
-    var allocator = step.owner.allocator;
+    const allocator = step.owner.allocator;
 
     var compile_commands = std.ArrayList(CompileCommandEntry).init(allocator);
     defer compile_commands.deinit();
