@@ -187,7 +187,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSource
     return res.toOwnedSlice() catch @panic("OOM");
 }
 
-fn makeCdb(step: *std.Build.Step, prog_node: *std.Progress.Node) anyerror!void {
+fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
     if (compile_steps == null) {
         @panic("No compile steps registered. Programmer error in createStep");
     }
