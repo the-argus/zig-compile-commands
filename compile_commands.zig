@@ -81,10 +81,7 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Co
     var dirs_as_strings = std.ArrayList([]const u8).init(b.allocator);
     defer dirs_as_strings.deinit();
 
-    // resolve lazy paths here
-    // TODO: should lazy paths be resolved later? it says to only use the
-    // function during the make phase so it seems possible that compile commands
-    // would get built before paths are resolved and then stuff doesn't work
+    // resolve lazy paths all at once
     for (dirs.items) |lazy_path| {
         dirs_as_strings.append(lazy_path.getPath(b)) catch @panic("OOM");
     }
