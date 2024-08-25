@@ -28,82 +28,68 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Step.Co
     cdb_step.dependOn(step);
 }
 
-/// Errors turning the build graph into compile command strings.
-const GraphSerializeError = error{InvalidHeader};
-
-/// Get the include directory, needed for the -I flag, for a given InstallFile
-/// step. This is usually created by CompileStep.installHeader().
-pub fn extractIncludeDirFromInstallFileStep(step: *std.Build.Step.InstallFile) GraphSerializeError![]const u8 {
-    // path to specific file being installed
-    const file = step.dest_builder.getInstallPath(
-        step.dir,
-        step.dest_rel_path,
-    );
-    // get the dirname, specifically the one called "include"
-    var dir = file;
-    {
-        const max_depth = 20;
-        var success = false;
-        for (0..max_depth) |_| {
-            if (std.fs.path.dirname(dir)) |dirname| {
-                dir = dirname;
-            } else {
-                // reached root directory
-                break;
-            }
-            success = std.mem.eql(u8, std.fs.path.basename(dir), "include");
-            if (success) break;
-        }
-        if (!success) {
-            std.log.warn("Header file installed in a directory that is not within an \"include\" directory, ignoring: {s} ", .{file});
-            return GraphSerializeError.InvalidHeader;
-        }
-    }
-    return dir;
-}
-
-/// A compilation step has an "include_dirs" array list, which contains paths as
-/// well as other compile steps. This loops until all the include directories
-/// necessary for good intellisense on the files compile by this step are found.
-pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Compile) []const []const u8 {
-    var dirs = std.ArrayList([]const u8).init(b.allocator);
-
+fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.Compile, lazy_path_output: *std.ArrayList(std.Build.LazyPath)) void {
     for (step.root_module.include_dirs.items) |include_dir| {
         switch (include_dir) {
             .other_step => |other_step| {
                 // if we are including another step, that step probably installs
                 // some headers. look through all of those and get their dirs.
                 for (other_step.installed_headers.items) |header_step| {
-                    if (header_step.id != .install_file) continue;
-                    const install_file = header_step.cast(std.Build.InstallFileStep) orelse @panic("Programmer error generating compile_commands.json");
-                    dirs.append(extractIncludeDirFromInstallFileStep(install_file) catch |err| {
-                        switch (err) {
-                            GraphSerializeError.InvalidHeader => continue,
-                        }
-                    }) catch @panic("OOM");
+                    // NOTE: this may be either a path to a file or a path to a directory of files to include.
+                    // if the directory has exclude patterns set, we will ignore those.
+                    // TODO: switch this to include the output directory instead of the source directory, so
+                    // that include / exclude patterns are respected
+                    lazy_path_output.append(header_step.getSource());
                 }
+                // recurse- this step may have included child dependencies
+                var local_lazy_path_output = std.ArrayList(std.Build.LazyPath).init(b.allocator) catch @panic("OOM");
+                defer local_lazy_path_output.deinit();
+                extractIncludeDirsFromCompileStepInner(b, other_step, local_lazy_path_output);
+                lazy_path_output.appendSlice(local_lazy_path_output.items);
             },
-            .path => |path| dirs.append(path.getPath(b)) catch @panic("OOM"),
-            .path_system => |path| dirs.append(path.getPath(b)) catch @panic("OOM"),
+            .path => |path| lazy_path_output.append(path) catch @panic("OOM"),
+            .path_system => |path| lazy_path_output.append(path) catch @panic("OOM"),
             // TODO: support this
             .config_header_step => {},
-            // TODO: test this...
+            // TODO: test these...
             .framework_path => |path| {
                 std.log.warn("Found framework include path- compile commands generation for this is untested.");
-                dirs.append(path.getPath(b)) catch @panic("OOM");
+                lazy_path_output.append(path) catch @panic("OOM");
             },
             .framework_path_system => |path| {
                 std.log.warn("Found system framework include path- compile commands generation for this is untested.");
-                dirs.append(path.getPath(b)) catch @panic("OOM");
+                lazy_path_output.append(path) catch @panic("OOM");
             },
             .path_after => |path| {
                 std.log.warn("Found path_after- compile commands generation for this is untested.");
-                dirs.append(path.getPath(b)) catch @panic("OOM");
+                lazy_path_output.append(path) catch @panic("OOM");
             },
         }
     }
+}
 
-    return dirs.toOwnedSlice() catch @panic("OOM");
+/// A compilation step has an "include_dirs" array list, which contains paths as
+/// well as other compile steps. This loops until all the include directories
+/// necessary for good intellisense on the files compile by this step are found.
+pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Compile) []const []const u8 {
+    var dirs = std.ArrayList(std.Build.LazyPath).init(b.allocator);
+    defer dirs.deinit();
+
+    // populates dirs
+    extractIncludeDirsFromCompileStepInner(b, step, &dirs);
+
+    var dirs_as_strings = std.ArrayList([]const u8).init(b.allocator);
+    defer dirs_as_strings.deinit();
+
+    // resolve lazy paths here
+    // TODO: should lazy paths be resolved later? it says to only use the
+    // function during the make phase so it seems possible that compile commands
+    // would get built before paths are resolved and then stuff doesn't work
+    for (dirs) |lazy_path| {
+        dirs_as_strings.append(lazy_path.getPath(b));
+    }
+
+    return dirs_as_strings.toOwnedSlice() catch @panic("OOM");
 }
 
 // NOTE: some of the CSourceFiles pointed at by the elements of the returned
