@@ -44,7 +44,7 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
                 // recurse- this step may have included child dependencies
                 var local_lazy_path_output = std.ArrayList(std.Build.LazyPath).init(b.allocator);
                 defer local_lazy_path_output.deinit();
-                extractIncludeDirsFromCompileStepInner(b, other_step, local_lazy_path_output);
+                extractIncludeDirsFromCompileStepInner(b, other_step, &local_lazy_path_output);
                 lazy_path_output.appendSlice(local_lazy_path_output.items);
             },
             .path => |path| lazy_path_output.append(path) catch @panic("OOM"),
