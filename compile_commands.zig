@@ -1,9 +1,9 @@
 const std = @import("std");
 
 // here's the static memory!!!!
-var compile_steps: ?[]*std.Build.CompileStep = null;
+var compile_steps: ?[]*std.Build.Step.Compile = null;
 
-const CSourceFiles = std.Build.CompileStep.CSourceFiles;
+const CSourceFiles = std.Build.Module.CSourceFiles;
 
 const CompileCommandEntry = struct {
     arguments: []const []const u8,
@@ -12,7 +12,7 @@ const CompileCommandEntry = struct {
     output: []const u8,
 };
 
-pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.CompileStep) void {
+pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Step.Compile) void {
     const step = b.allocator.create(std.Build.Step) catch @panic("Allocation failure, probably OOM");
 
     compile_steps = targets;
@@ -65,7 +65,7 @@ pub fn extractIncludeDirFromInstallFileStep(step: *std.Build.Step.InstallFile) G
 /// A compilation step has an "include_dirs" array list, which contains paths as
 /// well as other compile steps. This loops until all the include directories
 /// necessary for good intellisense on the files compile by this step are found.
-pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.CompileStep) []const []const u8 {
+pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Compile) []const []const u8 {
     var dirs = std.ArrayList([]const u8).init(b.allocator);
 
     for (step.include_dirs.items) |include_dir| {
@@ -95,13 +95,13 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Compile
 
 // NOTE: some of the CSourceFiles pointed at by the elements of the returned
 // array are allocated with the allocator, some are not.
-fn getCSources(b: *std.Build, steps: []const *std.Build.CompileStep) []*CSourceFiles {
+fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSourceFiles {
     var allocator = b.allocator;
     var res = std.ArrayList(*CSourceFiles).init(allocator);
 
     // move the compile steps into a mutable dynamic array, so we can add
     // any child steps
-    var compile_steps_list = std.ArrayList(*std.Build.CompileStep).init(b.allocator);
+    var compile_steps_list = std.ArrayList(*std.Build.Step.Compile).init(b.allocator);
     compile_steps_list.appendSlice(steps) catch @panic("OOM");
 
     var index: u32 = 0;
@@ -160,6 +160,10 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.CompileStep) []*CSourceF
                     flags.appendSlice(shared_flags.items) catch @panic("OOM");
 
                     source_file.* = CSourceFiles{
+                        .root = .{ .src_path = .{
+                            .owner = b,
+                            .sub_path = "",
+                        } },
                         .files = files_mem,
                         .flags = flags.toOwnedSlice() catch @panic("OOM"),
                     };
