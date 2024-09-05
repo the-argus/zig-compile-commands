@@ -106,7 +106,7 @@ fn makeCSourcePathsAbsolute(b: *std.Build, c_sources: CSourceFiles) AbsoluteCSou
         if (std.fs.path.isAbsolute(file)) {
             cpaths.append(file) catch @panic("OOM");
         } else {
-            cpaths.append(c_sources.root.getPath(b, file));
+            cpaths.append(c_sources.root.path(b, file).getPath(b)) catch @panic("OOM");
         }
     }
 
@@ -185,9 +185,9 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
                     flags.appendSlice(link_object.c_source_file.flags) catch @panic("OOM");
                     flags.appendSlice(shared_flags.items) catch @panic("OOM");
 
-                    abs_source_file.* = makeCSourcePathsAbsolute(step.owner, CSourceFiles{
+                    abs_source_file.* = makeCSourcePathsAbsolute(step.step.owner, CSourceFiles{
                         .root = .{ .src_path = .{
-                            .owner = b,
+                            .owner = step.step.owner,
                             .sub_path = "",
                         } },
                         .files = files_mem,
@@ -203,7 +203,10 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
                     flags.appendSlice(shared_flags.items) catch @panic("OOM");
                     source_files.flags = flags.toOwnedSlice() catch @panic("OOM");
 
-                    res.append(makeCSourcePathsAbsolute(step.owner, source_files)) catch @panic("OOM");
+                    const absolute_source_files = allocator.create(AbsoluteCSourceFiles) catch @panic("OOM");
+                    absolute_source_files.* = makeCSourcePathsAbsolute(step.step.owner, source_files.*);
+
+                    res.append(absolute_source_files) catch @panic("OOM");
                 },
             }
         }
@@ -220,7 +223,9 @@ fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
     _ = prog_node;
     const allocator = step.owner.allocator;
     const b = step.owner;
-    const global_cache_root = b.graph.global_cache_root.path();
+    // NOTE: these are not sane defaults really, but atm I don't care about accurately providing the
+    // location of the built .o object file to clangd
+    const global_cache_root = b.graph.global_cache_root.path orelse b.cache_root.path orelse (try std.fs.cwd().realpathAlloc(allocator, "."));
 
     var compile_commands = std.ArrayList(CompileCommandEntry).init(allocator);
     defer compile_commands.deinit();
