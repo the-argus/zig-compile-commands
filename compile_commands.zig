@@ -192,6 +192,8 @@ fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
     }
     _ = prog_node;
     const allocator = step.owner.allocator;
+    const b = step.owner;
+    const global_cache_root = b.graph.global_cache_root.path();
 
     var compile_commands = std.ArrayList(CompileCommandEntry).init(allocator);
     defer compile_commands.deinit();
@@ -208,18 +210,15 @@ fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
     for (c_sources) |c_source_file_set| {
         const flags = c_source_file_set.flags;
         for (c_source_file_set.files) |c_file| {
-            const file_str = if (std.fs.path.isAbsolute(c_file))
-                c_file
-            else
-                std.fs.path.join(allocator, &[_][]const u8{ cwd_string, c_file }) catch @panic("OOM");
+            const file_str = if (std.fs.path.isAbsolute(c_file)) c_file else step.owner.path(c_file);
 
-            const output_str = std.fmt.allocPrint(allocator, "{s}.o", .{file_str}) catch @panic("OOM");
+            const output_str = b.fmt("{s}.o", .{file_str});
 
             var arguments = std.ArrayList([]const u8).init(allocator);
             // pretend this is clang compiling
             arguments.append("clang") catch @panic("OOM");
-            arguments.append(c_file) catch @panic("OOM");
-            arguments.appendSlice(&.{ "-o", std.fmt.allocPrint(allocator, "{s}.o", .{c_file}) catch @panic("OOM") }) catch @panic("OOM");
+            arguments.append(file_str) catch @panic("OOM");
+            arguments.appendSlice(&.{ "-o", output_str }) catch @panic("OOM");
             arguments.appendSlice(flags) catch @panic("OOM");
 
             // add host native include dirs and libs
