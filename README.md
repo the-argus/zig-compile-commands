@@ -18,8 +18,8 @@ First, `build.zig.zon`:
 
     .dependencies = .{
         .compile_commands = .{
-            .url = "https://github.com/the-argus/zig-compile-commands/archive/697abd2d24dc73fe0ead1849f17c43f18c038bc6.tar.gz",
-            .hash = "12204f3f579b3072cddf75f31514c55b0bd30e09c755dd2389a0aa8bba79b7311be9",
+            .url = "https://github.com/the-argus/zig-compile-commands/archive/b73e8bdeb1266ea01b249387cabb39aad49f35d1.tar.gz",
+            .hash = "1220b92b277b33762a10b4f239edddfbe9aadd53af88c678f94443b0d2312d9526fa",
         },
     }
 }
