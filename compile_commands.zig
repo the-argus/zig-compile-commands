@@ -5,6 +5,12 @@ var compile_steps: ?[]*std.Build.Step.Compile = null;
 
 const CSourceFiles = std.Build.Module.CSourceFiles;
 
+/// A list of files (by absolute path) to compile with the given flags
+const AbsoluteCSourceFiles = struct {
+    files: []const []const u8,
+    flags: []const []const u8,
+};
+
 const CompileCommandEntry = struct {
     arguments: []const []const u8,
     directory: []const u8,
@@ -89,11 +95,32 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Co
     return dirs_as_strings.toOwnedSlice() catch @panic("OOM");
 }
 
+/// If a file is given to zig by absolute path, this function does nothing.
+/// Otherwise, it makes the relative path to the source file absolute by
+/// appending it to the builder passed in to this function.
+fn makeCSourcePathsAbsolute(b: *std.Build, c_sources: CSourceFiles) AbsoluteCSourceFiles {
+    var cpaths = std.ArrayList([]const u8).init(b.allocator);
+    defer cpaths.deinit();
+
+    for (c_sources.files) |file| {
+        if (std.fs.path.isAbsolute(file)) {
+            cpaths.append(file) catch @panic("OOM");
+        } else {
+            cpaths.append(c_sources.root.path(b, file).getPath(b)) catch @panic("OOM");
+        }
+    }
+
+    return AbsoluteCSourceFiles{
+        .files = cpaths.toOwnedSlice() catch @panic("OOM"),
+        .flags = c_sources.flags,
+    };
+}
+
 // NOTE: some of the CSourceFiles pointed at by the elements of the returned
 // array are allocated with the allocator, some are not.
-fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSourceFiles {
+fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*AbsoluteCSourceFiles {
     var allocator = b.allocator;
-    var res = std.ArrayList(*CSourceFiles).init(allocator);
+    var res = std.ArrayList(*AbsoluteCSourceFiles).init(allocator);
 
     // move the compile steps into a mutable dynamic array, so we can add
     // any child steps
@@ -147,27 +174,27 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSource
                     continue;
                 },
                 .c_source_file => {
-                    // convert C source file into c source fileS
+                    // convert C source file into absolute C source files
                     const path = link_object.c_source_file.file.getPath(b);
                     var files_mem = allocator.alloc([]const u8, 1) catch @panic("Allocation failure, probably OOM");
                     files_mem[0] = path;
 
-                    const source_file = allocator.create(CSourceFiles) catch @panic("Allocation failure, probably OOM");
+                    const abs_source_file = allocator.create(AbsoluteCSourceFiles) catch @panic("Allocation failure, probably OOM");
 
                     var flags = std.ArrayList([]const u8).init(allocator);
                     flags.appendSlice(link_object.c_source_file.flags) catch @panic("OOM");
                     flags.appendSlice(shared_flags.items) catch @panic("OOM");
 
-                    source_file.* = CSourceFiles{
+                    abs_source_file.* = makeCSourcePathsAbsolute(step.step.owner, CSourceFiles{
                         .root = .{ .src_path = .{
-                            .owner = b,
+                            .owner = step.step.owner,
                             .sub_path = "",
                         } },
                         .files = files_mem,
                         .flags = flags.toOwnedSlice() catch @panic("OOM"),
-                    };
+                    });
 
-                    res.append(source_file) catch @panic("OOM");
+                    res.append(abs_source_file) catch @panic("OOM");
                 },
                 .c_source_files => {
                     var source_files = link_object.c_source_files;
@@ -176,7 +203,10 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*CSource
                     flags.appendSlice(shared_flags.items) catch @panic("OOM");
                     source_files.flags = flags.toOwnedSlice() catch @panic("OOM");
 
-                    res.append(source_files) catch @panic("OOM");
+                    const absolute_source_files = allocator.create(AbsoluteCSourceFiles) catch @panic("OOM");
+                    absolute_source_files.* = makeCSourcePathsAbsolute(step.step.owner, source_files.*);
+
+                    res.append(absolute_source_files) catch @panic("OOM");
                 },
             }
         }
@@ -192,6 +222,10 @@ fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
     }
     _ = prog_node;
     const allocator = step.owner.allocator;
+    const b = step.owner;
+    // NOTE: these are not sane defaults really, but atm I don't care about accurately providing the
+    // location of the built .o object file to clangd
+    const global_cache_root = b.graph.global_cache_root.path orelse b.cache_root.path orelse (try std.fs.cwd().realpathAlloc(allocator, "."));
 
     var compile_commands = std.ArrayList(CompileCommandEntry).init(allocator);
     defer compile_commands.deinit();
@@ -205,21 +239,15 @@ fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
     const c_sources = getCSources(step.owner, compile_steps.?);
 
     // fill compile command entries, one for each file
-    for (c_sources) |c_source_file_set| {
-        const flags = c_source_file_set.flags;
-        for (c_source_file_set.files) |c_file| {
-            const file_str = if (std.fs.path.isAbsolute(c_file))
-                c_file
-            else
-                std.fs.path.join(allocator, &[_][]const u8{ cwd_string, c_file }) catch @panic("OOM");
-
-            const output_str = std.fmt.allocPrint(allocator, "{s}.o", .{file_str}) catch @panic("OOM");
+    for (c_sources) |absolute_c_source_files| {
+        const flags = absolute_c_source_files.flags;
+        for (absolute_c_source_files.files) |c_file| {
+            // NOTE: this is not accurate- not actually generating the hashed subdirectory names
+            const output_str = b.fmt("{s}.o", .{b.pathJoin(&.{ global_cache_root, std.fs.path.basename(c_file) })});
 
             var arguments = std.ArrayList([]const u8).init(allocator);
             // pretend this is clang compiling
-            arguments.append("clang") catch @panic("OOM");
-            arguments.append(c_file) catch @panic("OOM");
-            arguments.appendSlice(&.{ "-o", std.fmt.allocPrint(allocator, "{s}.o", .{c_file}) catch @panic("OOM") }) catch @panic("OOM");
+            arguments.appendSlice(&.{ "clang", c_file, "-o", output_str }) catch @panic("OOM");
             arguments.appendSlice(flags) catch @panic("OOM");
 
             // add host native include dirs and libs
@@ -236,7 +264,7 @@ fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
             const entry = CompileCommandEntry{
                 .arguments = arguments.toOwnedSlice() catch @panic("OOM"),
                 .output = output_str,
-                .file = file_str,
+                .file = c_file,
                 .directory = cwd_string,
             };
             compile_commands.append(entry) catch @panic("OOM");
