@@ -33,11 +33,11 @@ const zcc = @import("compile_commands");
 
 pub fn build(b: *std.Build) !void {
     // make a list of targets that have include files and c source files
-    var targets = std.ArrayList(*std.Build.CompileStep).init(b.allocator);
+    var targets = std.ArrayList(*std.Build.Step.Compile).init(b.allocator);
 
     // create your executable
     const exe = b.addExecutable(.{
-        .name = app_name,
+        .name = "my-project",
         .optimize = mode,
         .target = target,
     });
@@ -45,6 +45,8 @@ pub fn build(b: *std.Build) !void {
     targets.append(exe) catch @panic("OOM");
     // maybe some other targets, too?
     targets.append(exe_2) catch @panic("OOM");
+    // if this is an output, append it. but if exe or exe_2 links it, then it
+    // will get pulled in automatically
     targets.append(lib) catch @panic("OOM");
 
     // add a step called "cdb" (Compile commands DataBase) for making
