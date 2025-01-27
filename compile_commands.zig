@@ -216,11 +216,11 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
     return res.toOwnedSlice() catch @panic("OOM");
 }
 
-fn makeCdb(step: *std.Build.Step, prog_node: std.Progress.Node) anyerror!void {
+fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anyerror!void {
     if (compile_steps == null) {
         @panic("No compile steps registered. Programmer error in createStep");
     }
-    _ = prog_node;
+    _ = make_options;
     const allocator = step.owner.allocator;
     const b = step.owner;
     // NOTE: these are not sane defaults really, but atm I don't care about accurately providing the
