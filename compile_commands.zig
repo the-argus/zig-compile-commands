@@ -192,6 +192,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
                         } },
                         .files = files_mem,
                         .flags = flags.toOwnedSlice() catch @panic("OOM"),
+                        .language = .c,
                     });
 
                     res.append(abs_source_file) catch @panic("OOM");

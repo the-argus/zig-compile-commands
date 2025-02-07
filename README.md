@@ -15,13 +15,14 @@ First, `build.zig.zon`:
 .{
     .name = "your-project",
     .version = "0.0.1",
-
+    .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .compile_commands = .{
             .url = "https://github.com/the-argus/zig-compile-commands/archive/b73e8bdeb1266ea01b249387cabb39aad49f35d1.tar.gz",
             .hash = "1220b92b277b33762a10b4f239edddfbe9aadd53af88c678f94443b0d2312d9526fa",
         },
-    }
+    },
+    .paths = .{"src"},
 }
 ```
 
