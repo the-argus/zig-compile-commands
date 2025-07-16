@@ -18,8 +18,8 @@ First, `build.zig.zon`:
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .compile_commands = .{
-            .url = "https://github.com/the-argus/zig-compile-commands/archive/1a71188d1816cc0741785d4694f790a1106a150a.tar.gz",
-            .hash = "N-V-__8AABjOAAD9JOGy29zdkAQcgyQyd0NaOn0zP0KyC40W",
+            .url = "https://github.com/the-argus/zig-compile-commands/archive/11cc2917816875aae4890e0a899f810e33570d70.tar.gz",
+            .hash = "N-V-__8AAFLOAACuuPPvb9E05PlcLiPoxsMOTRiP4K1hSaoB",
         },
     },
     .paths = .{"src"},
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) !void {
 
     // add a step called "cdb" (Compile commands DataBase) for making
     // compile_commands.json. could be named anything. cdb is just quick to type
-    zcc.createStep(b, "cdb", targets.toOwnedSlice() catch @panic("OOM"));
+    _ = zcc.createStep(b, "cdb", targets.toOwnedSlice() catch @panic("OOM"));
 }
 ```
 
