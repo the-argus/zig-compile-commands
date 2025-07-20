@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 // here's the static memory!!!!
 var compile_steps: ?[]*std.Build.Step.Compile = null;
@@ -72,6 +73,7 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
                 std.log.warn("Found path_after- compile commands generation for this is untested.", .{});
                 lazy_path_output.append(path) catch @panic("OOM");
             },
+            else => {},
         }
     }
 }
@@ -278,12 +280,17 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
 }
 
 fn writeCompileCommands(file: *std.fs.File, compile_commands: []CompileCommandEntry) !void {
+    const zigver = builtin.zig_version;
     const options = std.json.StringifyOptions{
         .whitespace = .indent_tab,
         .emit_null_optional_fields = false,
     };
-
-    try std.json.stringify(compile_commands, options, file.*.writer());
+    
+    if (zigver.major == 0 and zigver.minor == 14) {
+        try std.json.stringify(compile_commands, options, file.*.writer());
+    } else {
+        try std.json.stringify(compile_commands, options, file.*.deprecatedWriter());
+    }
 }
 
 fn dirToString(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]const u8 {
