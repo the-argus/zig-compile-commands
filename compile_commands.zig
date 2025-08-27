@@ -47,31 +47,33 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
                     // if the directory has exclude patterns set, we will ignore those.
                     // TODO: switch this to include the output directory instead of the source directory, so
                     // that include / exclude patterns are respected
-                    lazy_path_output.append(header_step.getSource()) catch @panic("OOM");
+                    lazy_path_output.append(b.allocator, header_step.getSource()) catch @panic("OOM");
                 }
                 // recurse- this step may have included child dependencies
-                var local_lazy_path_output = std.ArrayList(std.Build.LazyPath).init(b.allocator);
-                defer local_lazy_path_output.deinit();
+                var local_lazy_path_output = std.ArrayList(std.Build.LazyPath){};
+                defer local_lazy_path_output.deinit(b.allocator);
                 extractIncludeDirsFromCompileStepInner(b, other_step, &local_lazy_path_output);
-                lazy_path_output.appendSlice(local_lazy_path_output.items) catch @panic("OOM");
+                lazy_path_output.appendSlice(b.allocator, local_lazy_path_output.items) catch @panic("OOM");
             },
-            .path => |path| lazy_path_output.append(path) catch @panic("OOM"),
-            .path_system => |path| lazy_path_output.append(path) catch @panic("OOM"),
+            .path => |path| lazy_path_output.append(b.allocator, path) catch @panic("OOM"),
+            .path_system => |path| lazy_path_output.append(b.allocator, path) catch @panic("OOM"),
             // TODO: support this
             .config_header_step => {},
             // TODO: test these...
             .framework_path => |path| {
                 std.log.warn("Found framework include path- compile commands generation for this is untested.", .{});
-                lazy_path_output.append(path) catch @panic("OOM");
+                lazy_path_output.append(b.allocator, path) catch @panic("OOM");
             },
             .framework_path_system => |path| {
                 std.log.warn("Found system framework include path- compile commands generation for this is untested.", .{});
-                lazy_path_output.append(path) catch @panic("OOM");
+                lazy_path_output.append(b.allocator, path) catch @panic("OOM");
             },
             .path_after => |path| {
                 std.log.warn("Found path_after- compile commands generation for this is untested.", .{});
-                lazy_path_output.append(path) catch @panic("OOM");
+                lazy_path_output.append(b.allocator, path) catch @panic("OOM");
             },
+            // TODO: support this
+            .embed_path => {},
         }
     }
 }
@@ -80,40 +82,40 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
 /// well as other compile steps. This loops until all the include directories
 /// necessary for good intellisense on the files compile by this step are found.
 pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Compile) []const []const u8 {
-    var dirs = std.ArrayList(std.Build.LazyPath).init(b.allocator);
-    defer dirs.deinit();
+    var dirs = std.ArrayList(std.Build.LazyPath){};
+    defer dirs.deinit(b.allocator);
 
     // populates dirs
     extractIncludeDirsFromCompileStepInner(b, step, &dirs);
 
-    var dirs_as_strings = std.ArrayList([]const u8).init(b.allocator);
-    defer dirs_as_strings.deinit();
+    var dirs_as_strings = std.ArrayList([]const u8){};
+    defer dirs_as_strings.deinit(b.allocator);
 
     // resolve lazy paths all at once
     for (dirs.items) |lazy_path| {
-        dirs_as_strings.append(lazy_path.getPath(b)) catch @panic("OOM");
+        dirs_as_strings.append(b.allocator, lazy_path.getPath(b)) catch @panic("OOM");
     }
 
-    return dirs_as_strings.toOwnedSlice() catch @panic("OOM");
+    return dirs_as_strings.toOwnedSlice(b.allocator) catch @panic("OOM");
 }
 
 /// If a file is given to zig by absolute path, this function does nothing.
 /// Otherwise, it makes the relative path to the source file absolute by
 /// appending it to the builder passed in to this function.
 fn makeCSourcePathsAbsolute(b: *std.Build, c_sources: CSourceFiles) AbsoluteCSourceFiles {
-    var cpaths = std.ArrayList([]const u8).init(b.allocator);
-    defer cpaths.deinit();
+    var cpaths = std.ArrayList([]const u8){};
+    defer cpaths.deinit(b.allocator);
 
     for (c_sources.files) |file| {
         if (std.fs.path.isAbsolute(file)) {
-            cpaths.append(file) catch @panic("OOM");
+            cpaths.append(b.allocator, file) catch @panic("OOM");
         } else {
-            cpaths.append(c_sources.root.path(b, file).getPath(b)) catch @panic("OOM");
+            cpaths.append(b.allocator, c_sources.root.path(b, file).getPath(b)) catch @panic("OOM");
         }
     }
 
     return AbsoluteCSourceFiles{
-        .files = cpaths.toOwnedSlice() catch @panic("OOM"),
+        .files = cpaths.toOwnedSlice(b.allocator) catch @panic("OOM"),
         .flags = c_sources.flags,
     };
 }
@@ -122,12 +124,12 @@ fn makeCSourcePathsAbsolute(b: *std.Build, c_sources: CSourceFiles) AbsoluteCSou
 // array are allocated with the allocator, some are not.
 fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*AbsoluteCSourceFiles {
     var allocator = b.allocator;
-    var res = std.ArrayList(*AbsoluteCSourceFiles).init(allocator);
+    var res = std.ArrayList(*AbsoluteCSourceFiles){};
 
     // move the compile steps into a mutable dynamic array, so we can add
     // any child steps
-    var compile_steps_list = std.ArrayList(*std.Build.Step.Compile).init(b.allocator);
-    compile_steps_list.appendSlice(steps) catch @panic("OOM");
+    var compile_steps_list = std.ArrayList(*std.Build.Step.Compile){};
+    compile_steps_list.appendSlice(allocator, steps) catch @panic("OOM");
 
     var index: u32 = 0;
 
@@ -135,27 +137,27 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
     while (index < compile_steps_list.items.len) {
         const step = compile_steps_list.items[index];
 
-        var shared_flags = std.ArrayList([]const u8).init(allocator);
-        defer shared_flags.deinit();
+        var shared_flags = std.ArrayList([]const u8){};
+        defer shared_flags.deinit(allocator);
 
         // catch all the system libraries being linked, make flags out of them
         for (step.root_module.link_objects.items) |link_object| {
             switch (link_object) {
-                .system_lib => |lib| shared_flags.append(linkFlag(allocator, lib.name)) catch @panic("OOM"),
+                .system_lib => |lib| shared_flags.append(allocator, linkFlag(allocator, lib.name)) catch @panic("OOM"),
                 else => {},
             }
         }
 
         if (step.is_linking_libc) {
-            shared_flags.append(linkFlag(allocator, "c")) catch @panic("OOM");
+            shared_flags.append(allocator, linkFlag(allocator, "c")) catch @panic("OOM");
         }
         if (step.is_linking_libcpp) {
-            shared_flags.append(linkFlag(allocator, "c++")) catch @panic("OOM");
+            shared_flags.append(allocator, linkFlag(allocator, "c++")) catch @panic("OOM");
         }
 
         // make flags out of all include directories
         for (extractIncludeDirsFromCompileStep(b, step)) |include_dir| {
-            shared_flags.append(includeFlag(b.allocator, include_dir)) catch @panic("OOM");
+            shared_flags.append(allocator, includeFlag(allocator, include_dir)) catch @panic("OOM");
         }
 
         for (step.root_module.link_objects.items) |link_object| {
@@ -164,7 +166,7 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
                     continue;
                 },
                 .other_step => {
-                    compile_steps_list.append(link_object.other_step) catch @panic("OOM");
+                    compile_steps_list.append(allocator, link_object.other_step) catch @panic("OOM");
                 },
                 .system_lib => {
                     continue;
@@ -183,9 +185,9 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
 
                     const abs_source_file = allocator.create(AbsoluteCSourceFiles) catch @panic("Allocation failure, probably OOM");
 
-                    var flags = std.ArrayList([]const u8).init(allocator);
-                    flags.appendSlice(link_object.c_source_file.flags) catch @panic("OOM");
-                    flags.appendSlice(shared_flags.items) catch @panic("OOM");
+                    var flags = std.ArrayList([]const u8){};
+                    flags.appendSlice(allocator, link_object.c_source_file.flags) catch @panic("OOM");
+                    flags.appendSlice(allocator, shared_flags.items) catch @panic("OOM");
 
                     abs_source_file.* = makeCSourcePathsAbsolute(step.step.owner, CSourceFiles{
                         .root = .{ .src_path = .{
@@ -193,30 +195,30 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
                             .sub_path = "",
                         } },
                         .files = files_mem,
-                        .flags = flags.toOwnedSlice() catch @panic("OOM"),
+                        .flags = flags.toOwnedSlice(allocator) catch @panic("OOM"),
                         .language = .c,
                     });
 
-                    res.append(abs_source_file) catch @panic("OOM");
+                    res.append(b.allocator, abs_source_file) catch @panic("OOM");
                 },
                 .c_source_files => {
                     var source_files = link_object.c_source_files;
-                    var flags = std.ArrayList([]const u8).init(allocator);
-                    flags.appendSlice(source_files.flags) catch @panic("OOM");
-                    flags.appendSlice(shared_flags.items) catch @panic("OOM");
-                    source_files.flags = flags.toOwnedSlice() catch @panic("OOM");
+                    var flags = std.ArrayList([]const u8){};
+                    flags.appendSlice(allocator, source_files.flags) catch @panic("OOM");
+                    flags.appendSlice(allocator, shared_flags.items) catch @panic("OOM");
+                    source_files.flags = flags.toOwnedSlice(allocator) catch @panic("OOM");
 
                     const absolute_source_files = allocator.create(AbsoluteCSourceFiles) catch @panic("OOM");
                     absolute_source_files.* = makeCSourcePathsAbsolute(step.step.owner, source_files.*);
 
-                    res.append(absolute_source_files) catch @panic("OOM");
+                    res.append(b.allocator, absolute_source_files) catch @panic("OOM");
                 },
             }
         }
         index += 1;
     }
 
-    return res.toOwnedSlice() catch @panic("OOM");
+    return res.toOwnedSlice(b.allocator) catch @panic("OOM");
 }
 
 fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anyerror!void {
@@ -230,8 +232,8 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
     // location of the built .o object file to clangd
     const global_cache_root = b.graph.global_cache_root.path orelse b.cache_root.path orelse (try std.fs.cwd().realpathAlloc(allocator, "."));
 
-    var compile_commands = std.ArrayList(CompileCommandEntry).init(allocator);
-    defer compile_commands.deinit();
+    var compile_commands = std.ArrayList(CompileCommandEntry){};
+    defer compile_commands.deinit(allocator);
 
     // initialize file and struct containing its future contents
     const cwd: std.fs.Dir = std.fs.cwd();
@@ -248,10 +250,10 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
             // NOTE: this is not accurate- not actually generating the hashed subdirectory names
             const output_str = b.fmt("{s}.o", .{b.pathJoin(&.{ global_cache_root, std.fs.path.basename(c_file) })});
 
-            var arguments = std.ArrayList([]const u8).init(allocator);
+            var arguments = std.ArrayList([]const u8){};
             // pretend this is clang compiling
-            arguments.appendSlice(&.{ "clang", c_file, "-o", output_str }) catch @panic("OOM");
-            arguments.appendSlice(flags) catch @panic("OOM");
+            arguments.appendSlice(allocator, &.{ "clang", c_file, "-o", output_str }) catch @panic("OOM");
+            arguments.appendSlice(allocator, flags) catch @panic("OOM");
 
             // add host native include dirs and libs
             // (doesn't really help unless your include dirs change after generating this)
@@ -265,12 +267,12 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
             // }
 
             const entry = CompileCommandEntry{
-                .arguments = arguments.toOwnedSlice() catch @panic("OOM"),
+                .arguments = arguments.toOwnedSlice(allocator) catch @panic("OOM"),
                 .output = output_str,
                 .file = c_file,
                 .directory = cwd_string,
             };
-            compile_commands.append(entry) catch @panic("OOM");
+            compile_commands.append(allocator, entry) catch @panic("OOM");
         }
     }
 
@@ -278,12 +280,17 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
 }
 
 fn writeCompileCommands(file: *std.fs.File, compile_commands: []CompileCommandEntry) !void {
-    const options = std.json.StringifyOptions{
-        .whitespace = .indent_tab,
-        .emit_null_optional_fields = false,
+    var buf: [std.json.default_buffer_size]u8 = undefined;
+    var writer = file.*.writer(&buf);
+    var stringify = std.json.Stringify{
+        .writer = &writer.interface,
+        .options = .{
+            .whitespace = .indent_tab,
+            .emit_null_optional_fields = false,
+        },
     };
 
-    try std.json.stringify(compile_commands, options, file.*.writer());
+    try stringify.write(compile_commands);
 }
 
 fn dirToString(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]const u8 {
