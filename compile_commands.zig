@@ -291,6 +291,7 @@ fn writeCompileCommands(file: *std.fs.File, compile_commands: []CompileCommandEn
     };
 
     try stringify.write(compile_commands);
+    try writer.interface.flush();
 }
 
 fn dirToString(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]const u8 {
