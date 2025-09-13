@@ -1,0 +1,13 @@
+.{
+    .name = .zig_compile_commands,
+    .fingerprint = 0xa55d894ff9399839,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "compile_commands.zig",
+        "build.zig.zon",
+        "README",
+        "LICENSE",
+    },
+}
