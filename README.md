@@ -11,7 +11,7 @@ commit history)
 To get the package in your project, `cd` into its root directory and run:
 
 ```bash
-zig fetch --save-exact=compile_commands "https://github.com/the-argus/zig-compile-commands/archive/a5389749b867eaa595acccc5cb4dd63f4cc0c07a.tar.gz"
+zig fetch --save-exact=compile_commands "https://github.com/the-argus/zig-compile-commands/archive/70fb439897e12cae896c071717d7c9c382918689.tar.gz"
 ```
 
 This will add an entry in your `build.zig.zon` with the hash of the commit in
