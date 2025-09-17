@@ -1,7 +1,7 @@
 const std = @import("std");
 
 // here's the static memory!!!!
-var compile_steps: ?[]*std.Build.Step.Compile = null;
+var compile_steps: ?[]const *std.Build.Step.Compile = null;
 
 const CSourceFiles = std.Build.Module.CSourceFiles;
 
@@ -18,7 +18,7 @@ const CompileCommandEntry = struct {
     output: []const u8,
 };
 
-pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Step.Compile) *std.Build.Step {
+pub fn createStep(b: *std.Build, name: []const u8, targets: []const *std.Build.Step.Compile) *std.Build.Step {
     const step = b.allocator.create(std.Build.Step) catch @panic("Allocation failure, probably OOM");
 
     compile_steps = targets;
@@ -29,6 +29,8 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Step.Co
         .makeFn = makeCdb,
         .owner = b,
     });
+
+    for (targets) |target| step.dependOn(&target.step);
 
     const cdb_step = b.step(name, "Create compile_commands.json");
     cdb_step.dependOn(step);
