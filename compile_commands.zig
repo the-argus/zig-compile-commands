@@ -33,6 +33,28 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Step.Co
     const cdb_step = b.step(name, "Create compile_commands.json");
     cdb_step.dependOn(step);
 
+    // make the generation of compile_commands.json depend on the generation of
+    // all header files for libraries linked to the target, so that it can know
+    // the absolute path to the generated directory
+    for (targets) |target| {
+        for (target.root_module.link_objects.items) |link_object| {
+            switch (link_object) {
+                .other_step => |other_step| {
+                    step.dependOn(other_step.getEmittedIncludeTree().generated.file.step);
+                },
+                else => {},
+            }
+        }
+
+        // paranoia: propagate all dependencies from targets to the step, but
+        // not the building of the targets themselves. this is just here to
+        // hopefully catch the possibility that there are some config headers
+        // or something that need to be generated
+        for (target.step.dependencies.items) |dependency| {
+            step.dependOn(dependency);
+        }
+    }
+
     return step;
 }
 
@@ -40,22 +62,16 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
     for (step.root_module.include_dirs.items) |include_dir| {
         switch (include_dir) {
             .other_step => |other_step| {
-                // if we are including another step, that step probably installs
-                // some headers. look through all of those and get their dirs.
-                for (other_step.installed_headers.items) |header_step| {
-                    // NOTE: this may be either a path to a file or a path to a directory of files to include.
-                    // if the directory has exclude patterns set, we will ignore those.
-                    // TODO: switch this to include the output directory instead of the source directory, so
-                    // that include / exclude patterns are respected
-                    lazy_path_output.append(b.allocator, header_step.getSource()) catch @panic("OOM");
-                }
+                lazy_path_output.append(b.allocator, other_step.getEmittedIncludeTree()) catch @panic("OOM");
                 // recurse- this step may have included child dependencies
                 var local_lazy_path_output = std.ArrayList(std.Build.LazyPath){};
                 defer local_lazy_path_output.deinit(b.allocator);
                 extractIncludeDirsFromCompileStepInner(b, other_step, &local_lazy_path_output);
                 lazy_path_output.appendSlice(b.allocator, local_lazy_path_output.items) catch @panic("OOM");
             },
-            .path => |path| lazy_path_output.append(b.allocator, path) catch @panic("OOM"),
+            .path => |path| {
+                lazy_path_output.append(b.allocator, path) catch @panic("OOM");
+            },
             .path_system => |path| lazy_path_output.append(b.allocator, path) catch @panic("OOM"),
             // TODO: support this
             .config_header_step => {},
