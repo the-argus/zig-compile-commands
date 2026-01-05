@@ -109,7 +109,18 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Co
 
     // resolve lazy paths all at once
     for (dirs.items) |lazy_path| {
-        dirs_as_strings.append(b.allocator, lazy_path.getPath(b)) catch @panic("OOM");
+        const valid_path = switch (lazy_path) {
+            .generated => |gen| gen.file.path != null,
+            else => true,
+        };
+
+        if (valid_path) {
+            const p = lazy_path.getPath3(b, &step.step);
+            dirs_as_strings.append(b.allocator, b.pathResolve(&.{
+                p.root_dir.path orelse ".",
+                p.sub_path,
+            })) catch @panic("OOM");
+        }
     }
 
     return dirs_as_strings.toOwnedSlice(b.allocator) catch @panic("OOM");
