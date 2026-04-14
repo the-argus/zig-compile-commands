@@ -176,6 +176,11 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
             shared_flags.append(allocator, includeFlag(allocator, include_dir)) catch @panic("OOM");
         }
 
+        // create flags out of all macro definitions
+        for (step.root_module.c_macros.items) |macro| {
+            shared_flags.append(allocator, macro) catch @panic("OOM");
+        }
+
         for (step.root_module.link_objects.items) |link_object| {
             switch (link_object) {
                 .static_path => {
