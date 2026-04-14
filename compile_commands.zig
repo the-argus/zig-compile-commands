@@ -174,6 +174,13 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
         var shared_flags = std.ArrayList([]const u8){};
         defer shared_flags.deinit(allocator);
 
+        // Add a --target flag when compiling for other architectures
+        if (step.root_module.resolved_target) |rt| {
+            const triple = rt.result.zigTriple(allocator) catch @panic("OOM");
+            const target_flag = std.fmt.allocPrint(allocator, "--target={s}", .{triple},) catch @panic("OOM");
+            shared_flags.append(allocator, target_flag) catch @panic("OOM");
+        }
+
         // catch all the system libraries being linked, make flags out of them
         for (step.root_module.link_objects.items) |link_object| {
             switch (link_object) {
