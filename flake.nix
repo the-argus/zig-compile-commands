@@ -15,6 +15,7 @@
       inherit (flake-utils.lib) system;
     in [
       system.aarch64-linux
+      system.aarch64-darwin
       system.x86_64-linux
     ];
   in
