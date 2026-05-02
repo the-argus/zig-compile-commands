@@ -11,11 +11,11 @@ Older versions are available in the commit history, but not maintained.
 To get the package in your project, `cd` into its root directory and run:
 
 ```bash
-zig fetch --save-exact=compile_commands "https://github.com/the-argus/zig-compile-commands/archive/70fb439897e12cae896c071717d7c9c382918689.tar.gz"
+zig fetch --save-exact=compile_commands "https://github.com/the-argus/zig-compile-commands/archive/9400cd1963ea6bb58fe47ba7d9700075b808cdd2.tar.gz"
 ```
 
 This will add an entry in your `build.zig.zon` with the hash of the commit in
-that link (the 0.15.1 version).
+that link (the 0.15.1/0.16.0 version).
 
 The next step is to use it into your `build.zig` by use `@import` on the
 dependency (zig compile commands is not a normal zig dependency, it is intended
