@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 
 // here's the static memory!!!!
 var compile_steps: ?[]*std.Build.Step.Compile = null;
+var cc_options: CompileCommandOptions = .{};
 
 const CSourceFiles = std.Build.Module.CSourceFiles;
 
@@ -17,6 +18,12 @@ const CompileCommandEntry = struct {
     directory: []const u8,
     file: []const u8,
     output: []const u8,
+};
+
+const CompileCommandOptions = struct {
+    // Alternative command driver path (eg: /usr/local/bin/clang++)
+    // It will use `clang` if not specified this.
+    driver: ?[]const u8 = null,
 };
 
 const is_0_16_or_newer = builtin.zig_version.major > 0 or
@@ -152,7 +159,18 @@ pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Co
 
     // resolve lazy paths all at once
     for (dirs.items) |lazy_path| {
-        dirs_as_strings.append(b.allocator, lazy_path.getPath(b)) catch @panic("OOM");
+        const valid_path = switch (lazy_path) {
+            .generated => |gen| gen.file.path != null,
+            else => true,
+        };
+
+        if (valid_path) {
+            const p = lazy_path.getPath3(b, &step.step);
+            dirs_as_strings.append(b.allocator, b.pathResolve(&.{
+                p.root_dir.path orelse ".",
+                p.sub_path,
+            })) catch @panic("OOM");
+        }
     }
 
     return dirs_as_strings.toOwnedSlice(b.allocator) catch @panic("OOM");
@@ -199,6 +217,13 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
         var shared_flags: std.ArrayList([]const u8) = .empty;
         defer shared_flags.deinit(allocator);
 
+        // Add a --target flag when compiling for other architectures
+        if (step.root_module.resolved_target) |rt| {
+            const triple = rt.result.zigTriple(allocator) catch @panic("OOM");
+            const target_flag = std.fmt.allocPrint(allocator, "--target={s}", .{triple},) catch @panic("OOM");
+            shared_flags.append(allocator, target_flag) catch @panic("OOM");
+        }
+
         // catch all the system libraries being linked, make flags out of them
         for (step.root_module.link_objects.items) |link_object| {
             switch (link_object) {
@@ -217,6 +242,11 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
         // make flags out of all include directories
         for (extractIncludeDirsFromCompileStep(b, step)) |include_dir| {
             shared_flags.append(allocator, includeFlag(allocator, include_dir)) catch @panic("OOM");
+        }
+
+        // create flags out of all macro definitions
+        for (step.root_module.c_macros.items) |macro| {
+            shared_flags.append(allocator, macro) catch @panic("OOM");
         }
 
         for (step.root_module.link_objects.items) |link_object| {
@@ -310,7 +340,7 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
 
             var arguments: std.ArrayList([]const u8) = .empty;
             // pretend this is clang compiling
-            arguments.appendSlice(allocator, &.{ "clang", c_file, "-o", output_str }) catch @panic("OOM");
+            arguments.appendSlice(allocator, &.{ cc_options.driver orelse "clang", c_file, "-o", output_str }) catch @panic("OOM");
             arguments.appendSlice(allocator, flags) catch @panic("OOM");
 
             // add host native include dirs and libs
@@ -375,4 +405,12 @@ fn linkFlag(ally: std.mem.Allocator, lib: []const u8) []const u8 {
 
 fn includeFlag(ally: std.mem.Allocator, path: []const u8) []const u8 {
     return std.fmt.allocPrint(ally, "-I{s}", .{path}) catch @panic("OOM");
+}
+
+/// Returns a pointer to the options used for compile_commands.json generation.
+///
+/// The returned options are intended to be mutated in order to customize
+/// how the compilation commands are generated.
+pub fn options() *CompileCommandOptions {
+    return &cc_options;
 }

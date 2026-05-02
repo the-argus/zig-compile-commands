@@ -32,8 +32,10 @@ pub fn build(b: *std.Build) !void {
     // create your executable
     const exe = b.addExecutable(.{
         .name = "my-project",
-        .optimize = optimize,
-        .target = target,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     // keep track of it, so later we can pass it to compile_commands
     targets.append(b.allocator, exe) catch @panic("OOM");
