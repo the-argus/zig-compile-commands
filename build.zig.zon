@@ -6,6 +6,8 @@
     .paths = .{
         "build.zig",
         "compile_commands.zig",
+        "file_compat.zig",
+        "get_flags.zig",
         "build.zig.zon",
         "README",
         "LICENSE",
