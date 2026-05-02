@@ -26,7 +26,7 @@
         pkgs.mkShell
         {
           packages = with pkgs; [
-            zig_0_15
+            zig_0_16
           ];
         };
     });
