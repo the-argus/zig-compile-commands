@@ -1,7 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-// here's the static memory!!!!
 var compile_steps: ?[]*std.Build.Step.Compile = null;
 var cc_options: CompileCommandOptions = .{};
 
@@ -146,7 +145,7 @@ fn extractIncludeDirsFromCompileStepInner(b: *std.Build, step: *std.Build.Step.C
 
 /// A compilation step has an "include_dirs" array list, which contains paths as
 /// well as other compile steps. This loops until all the include directories
-/// necessary for good intellisense on the files compile by this step are found.
+/// necessary for good intellisense on the files compiled by this step are found.
 pub fn extractIncludeDirsFromCompileStep(b: *std.Build, step: *std.Build.Step.Compile) []const []const u8 {
     var dirs: std.ArrayList(std.Build.LazyPath) = .empty;
     defer dirs.deinit(b.allocator);
@@ -220,7 +219,11 @@ fn getCSources(b: *std.Build, steps: []const *std.Build.Step.Compile) []*Absolut
         // Add a --target flag when compiling for other architectures
         if (step.root_module.resolved_target) |rt| {
             const triple = rt.result.zigTriple(allocator) catch @panic("OOM");
-            const target_flag = std.fmt.allocPrint(allocator, "--target={s}", .{triple},) catch @panic("OOM");
+            const target_flag = std.fmt.allocPrint(
+                allocator,
+                "--target={s}",
+                .{triple},
+            ) catch @panic("OOM");
             shared_flags.append(allocator, target_flag) catch @panic("OOM");
         }
 
