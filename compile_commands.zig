@@ -82,28 +82,6 @@ pub fn createStep(b: *std.Build, name: []const u8, targets: []*std.Build.Step.Co
     const cdb_step = b.step(name, "Create compile_commands.json");
     cdb_step.dependOn(step);
 
-    // make the generation of compile_commands.json depend on the generation of
-    // all header files for libraries linked to the target, so that it can know
-    // the absolute path to the generated directory
-    for (targets) |target| {
-        for (target.root_module.link_objects.items) |link_object| {
-            switch (link_object) {
-                .other_step => |other_step| {
-                    step.dependOn(other_step.getEmittedIncludeTree().generated.file.step);
-                },
-                else => {},
-            }
-        }
-
-        // paranoia: propagate all dependencies from targets to the step, but
-        // not the building of the targets themselves. this is just here to
-        // hopefully catch the possibility that there are some config headers
-        // or something that need to be generated
-        for (target.step.dependencies.items) |dependency| {
-            step.dependOn(dependency);
-        }
-    }
-
     return step;
 }
 
