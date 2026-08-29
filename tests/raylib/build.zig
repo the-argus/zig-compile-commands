@@ -34,6 +34,5 @@ pub fn transitiveBuild(
     return zcc.createStepAndDependOnTargets(b, .{
         .name = b.fmt("test_{s}_cdb", .{name}),
         .targets = targets.items,
-        .custom_output_directory = b.path(loc),
     });
 }
