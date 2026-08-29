@@ -42,7 +42,7 @@ pub fn transitiveBuild(
     // will be pulled in transitively
     try targets.append(b.allocator, exe);
 
-    return zcc.createStep(b, .{
+    return zcc.createStepAndDependOnTargets(b, .{
         .name = b.fmt("test_{s}_cdb", .{name}),
         .targets = try targets.toOwnedSlice(b.allocator),
     });

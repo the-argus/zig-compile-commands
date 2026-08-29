@@ -62,13 +62,33 @@ pub fn build(b: *std.Build) !void {
     // `zig build` also generates the compile_commands.json.
     _ = zcc.createStep(b, .{
         .name = "cdb",
-        .targets = targets.toOwnedSlice(b.allocator) catch @panic("OOM"),
+        .targets = targets.items,
     });
 }
 ```
 
 And you're all done. Just run `zig build cdb` to generate the `compile_commands.json`
 file according to your current build graph.
+
+## Diagnostic errors show up in `.h` files
+
+This could be for a variety of reasons, including not being in the directory
+with the `compile_commands.json` or simply having forgotten to generate it.
+However, even when doing things correctly, this may sometimes still happen. I
+believe it occurs when mixing C and C++ files, though I am not certain. It is
+has been a [known issue in clangd for a few
+years](https://github.com/clangd/clangd/issues/1138).
+
+A workaround reported on that issue is to try creating a `.clangd` file in the
+root of your project with the following contents:
+
+```yaml
+If:
+  PathMatch: .*\*.h
+
+CompileFlags:
+  Add: [-xc]
+```
 
 ## Building `compile_commands.json` panics
 
@@ -91,8 +111,10 @@ meantime you can do something like this, to guarantee that everything needed for
 the `compile_commands.json` is present before generation:
 
 ```zig
-    const targetsSlice = targets.toOwnedSlice(b.allocator) catch @panic("OOM");
-    const buildStep = zcc.createStep(b, "cdb", targetsSlice);
+    const compile_commands_step = zcc.createStep(b, .{
+        .name = "cdb",
+        .targets = targets.items,
+    });
     // Build everything in the project before generating the compile_commands
-    for (targetsSlice) |target| step.dependOn(&target.step);
+    for (targets.items) |target| compile_commands_step.dependOn(&target.step);
 ```

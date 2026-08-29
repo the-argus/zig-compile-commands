@@ -18,6 +18,14 @@ pub const CompileCommandOptions = struct {
     // fix some incorrect LSP stuff indicating, for example, whether simd
     // extensions are available
     include_cpu_features: bool = false,
+    // output the compile_commands.json to a file other than
+    // $PWD/compile_commands.json. Mainly used by tests. Will cause an error
+    // the file path does not exist.
+    // NOTE: if you choose this then be aware that the CompileCommandsStep
+    // will depend on the generation of this path.
+    custom_output_directory: ?std.Build.LazyPath = null,
+    // Output a file that is called something other than "compile_commands.json"
+    custom_output_filename: ?[]const u8 = null,
 };
 
 const CompileCommandsStep = struct {
@@ -39,6 +47,10 @@ const CompileCommandsStep = struct {
             .compile_steps = owned_options.targets,
             .options = owned_options,
         };
+        if (self.options.custom_output_directory) |output_lazy_path| {
+            // our step should depend on the generation of this path
+            output_lazy_path.addStepDependencies(&self.step);
+        }
         return self;
     }
 };
@@ -65,13 +77,10 @@ pub fn createStep(b: *std.Build, options: CompileCommandOptions) *std.Build.Step
         defer idx += 1;
         lazy_paths.clearRetainingCapacity();
         get_flags.compileStepPathDependencies(csteps.items[idx], &lazy_paths, &csteps) catch |err| {
-            std.log.err("Error getting leaf dependencies of compile step: {}", .{err});
-            @panic("Failed to get leaf dependencies of compile step");
+            std.debug.panic("Error getting leaf dependencies of compile step: {}", .{err});
         };
         for (lazy_paths.items) |lazy_path| {
-            if (lazy_path == .generated) {
-                step.step.dependOn(lazy_path.generated.file.step);
-            }
+            lazy_path.addStepDependencies(&step.step);
         }
     }
 
@@ -92,17 +101,44 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
         try get_flags.compileStepToCompileCommandEntries(csteps.items[idx], cc_step.options, &compile_commands, &csteps);
     }
 
-    const cwd_string = try fcompat.getCwd(b);
-    const io = fcompat.getIo();
-    const cwd = try fcompat.asDirectory(io, cwd_string);
-    var file = try fcompat.createFile(io, cwd, "compile_commands.json");
-    try writeCompileCommands(io, &file, compile_commands.items);
-    if (fcompat.is_0_16_or_newer) {
-        const iop = io orelse return error.NoIoAvailable;
-        file.close(iop);
-    } else {
-        file.close();
-    }
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var output_file = block: {
+        const output_filename: []const u8 = cc_step.options.custom_output_filename orelse "compile_commands.json";
+
+        const dir = dir_block: {
+            if (cc_step.options.custom_output_directory) |custom_output_directory| {
+                const cache_path = try custom_output_directory.getPath4(b, &cc_step.step);
+                const stat = try cache_path.statFile(io, "");
+                if (stat.kind != .directory) {
+                    std.log.err(
+                        \\Refusing to output compile_commands.json to anything other
+                        \\than a regular directory. Requested output dir was {s}, of type {}
+                    , .{ try cache_path.toString(b.allocator), stat.kind });
+                    return error.RequestedCompileCommandsOutputWasNotRegularDirectory;
+                }
+
+                break :dir_block try cache_path.openDir(io, "", .{});
+            } else if (b.build_root.path) |build_root_path| {
+                break :dir_block try std.Io.Dir.openDirAbsolute(io, build_root_path, .{});
+            } else {
+                const cwd_string = try std.process.currentPathAlloc(io, b.allocator);
+                std.log.warn(
+                    \\No build root path specified by the build system for
+                    \\ compile_commands.json output, falling back to process CWD {s}
+                , .{cwd_string});
+                // std.Io.Dir.cwd() would be better but we want to print it as a string before this
+                break :dir_block try std.Io.Dir.openDirAbsolute(io, cwd_string, .{});
+            }
+        };
+        defer dir.close(io);
+        break :block try dir.createFile(io, output_filename, .{});
+    };
+    defer output_file.close(io);
+
+    try writeCompileCommands(io, &output_file, compile_commands.items);
 }
 
 fn writeCompileCommands(
@@ -130,8 +166,4 @@ fn writeCompileCommands(
 
     try stringify.write(compile_commands);
     try writer.interface.flush();
-}
-
-fn linkFlag(ally: std.mem.Allocator, lib: []const u8) []const u8 {
-    return std.fmt.allocPrint(ally, "-l{s}", .{lib}) catch @panic("OOM");
 }

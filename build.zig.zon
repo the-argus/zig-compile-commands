@@ -1,8 +1,22 @@
 .{
     .name = .zig_compile_commands,
     .fingerprint = 0xa55d894ff9399839,
-    .version = "0.0.1",
-    .minimum_zig_version = "0.15.1",
+    .version = "1.0.1",
+
+    .dependencies = .{
+        .SDL = .{
+            .url = "git+https://github.com/castholm/SDL.git#fb2d799c4778832a34ccb3739e40dded700684bd",
+            .hash = "sdl-0.5.3+3.4.14-SDL--v4eqAGuIKFsspMVxBxZf1OIEmmH-yHDdEl9ZRdX",
+            .lazy = true,
+        },
+        .raylib = .{
+            .url = "git+https://github.com/raysan5/raylib#6.0",
+            .hash = "raylib-6.0.0-whq8uCSwLgWWeF3ec3dbG6Rr36SLFL-s2WJ1Q_2E22Bb",
+            .lazy = true,
+        },
+    },
+
+    .minimum_zig_version = "0.16.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",
@@ -14,17 +28,6 @@
         "LICENSE",
         "README.md",
         "triple.zig",
-        "tests/integration/add.c",
-        "tests/integration/add.h",
-        "tests/integration/build.zig",
-        "tests/integration/main.c",
-        "tests/config_header/build.zig",
-        "tests/config_header/lib.c",
-        "tests/config_header/lib.h",
-        "tests/config_header/lib_config.h.in",
-        "tests/musl_static/build.zig",
-        "tests/musl_static/main.c",
-        "tests/musl_static_cpp/build.zig",
-        "tests/musl_static_cpp/main.c",
+        "tests/",
     },
 }

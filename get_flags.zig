@@ -34,7 +34,7 @@ const CompileCommandsBuilder = struct {
         if (!gop_result.found_existing) {
             gop_result.value_ptr.* = .{ .directory = std.fs.path.dirname(absolute_path) orelse "/" };
         } else {
-            @panic("multiple files with the same absolute path?");
+            std.debug.panic("Attempting to resolve source file {s}, but it seems the same file is already compiled under the current module.", .{absolute_path});
         }
         try gop_result.value_ptr.file_specific_flags.appendSlice(b.allocator, source.flags);
     }
@@ -47,10 +47,9 @@ const CompileCommandsBuilder = struct {
             if (!gop_result.found_existing) {
                 gop_result.value_ptr.* = .{ .directory = std.fs.path.dirname(absolute_path) orelse "/" };
             } else {
-                @panic("multiple files with the same absolute path?");
+                std.debug.panic("Attempting to resolve source file {s}, but it seems the same file is already compiled under the current module.", .{absolute_path});
             }
             try gop_result.value_ptr.file_specific_flags.appendSlice(b.allocator, sources.flags);
-            gop_result.value_ptr.directory = try root.joinString(b.allocator, "");
         }
     }
 
@@ -341,7 +340,7 @@ fn appendTargetCpuFlags(output: GenerateOutput, target: *const std.Target) !void
 
         // skipping some stuff here that zig also skips
         //
-        // also see: the line wiht isDynamicAMDGCNFeature() in Compilation.zig
+        // also see: the line with isDynamicAMDGCNFeature() in Compilation.zig
         if (target.cpu.arch == .amdgcn and
             (std.mem.eql(u8, llvm_name, "sramecc") or std.mem.eql(u8, llvm_name, "xnack")))
             continue;

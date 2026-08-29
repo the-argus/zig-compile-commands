@@ -25,9 +25,19 @@
       devShell =
         pkgs.mkShell
         {
-          packages = with pkgs; [
-            zig_0_16
-          ];
+          packages =
+            (with pkgs; [
+              zig_0_16
+              clang-tools
+            ])
+            ++ pkgs.lib.optionals (system != flake-utils.lib.system.aarch64-darwin) (with pkgs; [
+              libGLU
+              libx11
+              libxrandr
+              libxinerama
+              libxi
+              libxcursor
+            ]);
         };
     });
 }

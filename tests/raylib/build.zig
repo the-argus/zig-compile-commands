@@ -7,38 +7,33 @@ pub fn transitiveBuild(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) !*std.Build.Step {
-    const loc = "tests/musl_static_cpp/";
-
-    _ = target;
-
-    const musl_target = b.resolveTargetQuery(.{
-        .cpu_arch = .arm,
-        .os_tag = .linux,
-        .abi = .musleabihf,
-    });
+    const loc = "tests/raylib/";
 
     var targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
     const exe = b.addExecutable(.{
-        .name = "musl_static_cpp_exe",
-        .linkage = .static,
+        .name = "raylib_exe",
+        .linkage = .dynamic,
         .root_module = b.createModule(.{
-            .target = musl_target,
+            .target = target,
             .optimize = optimize,
             .link_libc = true,
-            .link_libcpp = true,
         }),
     });
     exe.root_module.addCSourceFile(.{
-        .file = b.path(loc ++ "main.cpp"),
+        .file = b.path(loc ++ "main.c"),
         .flags = &.{ "-Wall", "-Werror" },
     });
+
+    if (b.lazyDependency("raylib", .{ .target = target, .optimize = optimize, .linkage = .dynamic })) |raylib| {
+        exe.root_module.linkLibrary(raylib.artifact("raylib"));
+    }
 
     try targets.append(b.allocator, exe);
 
     return zcc.createStepAndDependOnTargets(b, .{
         .name = b.fmt("test_{s}_cdb", .{name}),
-        .targets = try targets.toOwnedSlice(b.allocator),
+        .targets = targets.items,
         .custom_output_directory = b.path(loc),
     });
 }
