@@ -616,13 +616,18 @@ fn generateCompileCommandEntriesOrGatherDependencies(
                 // Inherit dependencies on system libraries and static libraries.
                 for (mod.link_objects.items) |link_object| {
                     switch (link_object) {
-                        // linking a static library offers nothing to compile_commands.json
+                        // linking a static library by path offers nothing to compile_commands.json
                         .static_path => {},
-                        // clangd doesnt care about linking against a test or object file or library or adding to rpath
-                        // NOTE: if compile steps get a concept of public flags, then this will change and other_step
-                        // maye forward something, and we will need to do getCompileDependencies(true) or something to
-                        // gather the public flags of linked objects
-                        .other_step, .win32_resource_file => {},
+                        .other_step => |other_step| {
+                            if (other_step != step and find(*std.Build.Step.Compile, do_later.items, &.{other_step}) == null) {
+                                try do_later.append(b.allocator, other_step);
+                            }
+                            // clangd doesnt care about linking against a test or object file or library or adding to rpath
+                            // NOTE: if compile steps get a concept of public flags, then this will change and other_step
+                            // maye forward something, and we will need to do getCompileDependencies(true) or something to
+                            // gather the public flags of linked objects
+                        },
+                        .win32_resource_file => {},
                         // assembly files have no associated flags
                         .assembly_file => {},
 
