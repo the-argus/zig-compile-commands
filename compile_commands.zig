@@ -27,6 +27,8 @@ const CompileCommandsStep = struct {
 
     fn create(b: *std.Build, options: CompileCommandOptions) *CompileCommandsStep {
         const self = b.allocator.create(@This()) catch @panic("Allocation failure, probably OOM");
+        var owned_options = options;
+        owned_options.targets = b.allocator.dupe(*std.Build.Step.Compile, options.targets) catch @panic("Allocation failure, probably OOM");
         self.* = .{
             .step = std.Build.Step.init(.{
                 .id = .custom,
@@ -34,8 +36,8 @@ const CompileCommandsStep = struct {
                 .makeFn = makeCdb,
                 .owner = b,
             }),
-            .compile_steps = options.targets,
-            .options = options,
+            .compile_steps = owned_options.targets,
+            .options = owned_options,
         };
         return self;
     }
