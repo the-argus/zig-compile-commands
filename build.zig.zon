@@ -1,7 +1,7 @@
 .{
     .name = .zig_compile_commands,
     .fingerprint = 0xa55d894ff9399839,
-    .version = "1.0.1",
+    .version = "1.0.2",
 
     .dependencies = .{
         .SDL = .{

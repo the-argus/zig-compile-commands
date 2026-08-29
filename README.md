@@ -11,7 +11,7 @@ Older versions are available in the commit history, but not maintained.
 To get the package in your project, `cd` into its root directory and run:
 
 ```bash
-zig fetch --save-exact=compile_commands "https://github.com/the-argus/zig-compile-commands/archive/690eef9b8926dcf1f70b00b0f9c15d99ec2901bb.tar.gz"
+zig fetch --save-exact=compile_commands "https://github.com/the-argus/zig-compile-commands/archive/9697f3acea44766ca98b24d9c2df30d634bd1e42.tar.gz"
 ```
 
 This will add an entry in your `build.zig.zon` with the hash of the commit in
