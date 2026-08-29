@@ -77,7 +77,8 @@ pub fn createStep(b: *std.Build, options: CompileCommandOptions) *std.Build.Step
         defer idx += 1;
         lazy_paths.clearRetainingCapacity();
         get_flags.compileStepPathDependencies(csteps.items[idx], &lazy_paths, &csteps) catch |err| {
-            std.debug.panic("Error getting leaf dependencies of compile step: {}", .{err});
+            std.log.err("Error getting leaf dependencies of compile step {s}: {}", .{ csteps.items[idx].name, err });
+            continue;
         };
         for (lazy_paths.items) |lazy_path| {
             lazy_path.addStepDependencies(&step.step);

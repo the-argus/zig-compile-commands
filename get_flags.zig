@@ -34,7 +34,8 @@ const CompileCommandsBuilder = struct {
         if (!gop_result.found_existing) {
             gop_result.value_ptr.* = .{ .directory = std.fs.path.dirname(absolute_path) orelse "/" };
         } else {
-            std.debug.panic("Attempting to resolve source file {s}, but it seems the same file is already compiled under the current module.", .{absolute_path});
+            std.log.warn("Found duplicate source file in a single compile step: \"{s}\", ignoring repeated instance", .{absolute_path});
+            return;
         }
         try gop_result.value_ptr.file_specific_flags.appendSlice(b.allocator, source.flags);
     }
@@ -47,7 +48,8 @@ const CompileCommandsBuilder = struct {
             if (!gop_result.found_existing) {
                 gop_result.value_ptr.* = .{ .directory = std.fs.path.dirname(absolute_path) orelse "/" };
             } else {
-                std.debug.panic("Attempting to resolve source file {s}, but it seems the same file is already compiled under the current module.", .{absolute_path});
+                std.log.warn("Found duplicate source file in a single compile step: \"{s}\", ignoring repeated instance", .{absolute_path});
+                continue;
             }
             try gop_result.value_ptr.file_specific_flags.appendSlice(b.allocator, sources.flags);
         }
@@ -532,7 +534,7 @@ fn appendFlagsForSystemLib(
                         }));
                     },
                     .force => {
-                        std.debug.panic("pkg-config failed for library {s}, unable to build compile_commands.json", .{system_lib.name});
+                        std.log.err("pkg-config failed for library \"{s}\", unable to append any flags it may export to its dependent step \"{s}\"", .{ system_lib.name, step.name });
                     },
                     .no => unreachable,
                 },
