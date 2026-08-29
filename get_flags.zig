@@ -8,6 +8,7 @@ const std = @import("std");
 const fcompat = @import("file_compat.zig");
 const LazyPath = std.Build.LazyPath;
 const CompileCommandEntry = @import("compile_commands.zig").CompileCommandEntry;
+const Options = @import("compile_commands.zig").CompileCommandOptions;
 
 /// resolve paths from Cache.Directory and Cache.Path to be absolute (they should be relative to build root CWD).
 fn makeRelativeBuildPathAbsolute(b: *std.Build, allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
@@ -93,7 +94,7 @@ const CompileCommandsBuilder = struct {
 
 const GenerateCompileCommandsParameters = struct {
     output: *std.ArrayList(CompileCommandEntry),
-    driver: ?[]const u8,
+    options: Options,
 };
 /// configuration parameters and intermediate data
 const GenerateCompileCommandsIntermediate = struct {
@@ -114,6 +115,13 @@ const GenerateOutput = struct {
 
     pub fn wantsFlags(self: *const @This()) bool {
         return self.params == .cc_params;
+    }
+
+    pub fn options(self: *const @This()) ?Options {
+        switch (self.params) {
+            .cc_params => |intermediate| return intermediate.params.options,
+            else => return null,
+        }
     }
 
     /// add CSourceFile to compile_commands.json, OR add LazyPath so we can depend on the generation of this file
@@ -280,7 +288,13 @@ fn appendFlagsForModule(
                 try output.appendFlagSlice(&.{ "-target", llvm_triple });
             }
 
-            try output.appendFlagSlice(&.{ "-mcpu", try target.query.serializeCpuAlloc(b.allocator) });
+            if (output.options()) |options| {
+                if (options.include_cpu_features) {
+                    try appendTargetCpuFlags(output, &target.result);
+                }
+            }
+
+            try appendBundledLibcIncludeFlags(output, b, mod, &target.result);
         }
     }
 
@@ -291,6 +305,182 @@ fn appendFlagsForModule(
 
     // c macro flags
     try output.appendFlagSlice(mod.c_macros.items);
+}
+
+/// Pass some CPU features to clang frontend via -Xclang unstable flags
+fn appendTargetCpuFlags(output: GenerateOutput, target: *const std.Target) !void {
+    if (!output.wantsFlags()) return;
+
+    const allocator = output.params.cc_params.allocator;
+
+    // Some LLVM targets do not properly process CPU models in their clang
+    // driver code, and zig omits the flags for those
+    //
+    // also see: clangSupportsTargetCpuArg in src/target.zig
+    const clang_supports_target_cpu_arg = switch (target.cpu.arch) {
+        .arc, .msp430, .ve, .xcore, .xtensa => false,
+        else => true,
+    };
+    if (clang_supports_target_cpu_arg) {
+        if (target.cpu.model.llvm_name) |llvm_name| {
+            try output.appendFlagSlice(&.{ "-Xclang", "-target-cpu", "-Xclang", llvm_name });
+        }
+    }
+
+    for (target.cpu.arch.allFeaturesList(), 0..) |feature, index_usize| {
+        const index: std.Target.Cpu.Feature.Set.Index = @intCast(index_usize);
+        const is_enabled = target.cpu.features.isEnabled(index);
+        const llvm_name = feature.llvm_name orelse continue;
+
+        // zig skips these and gives them somewhere else, idk
+        if (std.mem.startsWith(u8, llvm_name, "soft-float") or
+            std.mem.startsWith(u8, llvm_name, "hard-float"))
+            continue;
+        if (target.cpu.arch == .s390x and std.mem.eql(u8, llvm_name, "backchain"))
+            continue;
+
+        // skipping some stuff here that zig also skips
+        //
+        // also see: the line wiht isDynamicAMDGCNFeature() in Compilation.zig
+        if (target.cpu.arch == .amdgcn and
+            (std.mem.eql(u8, llvm_name, "sramecc") or std.mem.eql(u8, llvm_name, "xnack")))
+            continue;
+
+        const plus_or_minus: u8 = if (is_enabled) '+' else '-';
+        try output.appendFlagSlice(&.{
+            "-Xclang",
+            "-target-feature",
+            "-Xclang",
+            try std.fmt.allocPrint(allocator, "{c}{s}", .{ plus_or_minus, llvm_name }),
+        });
+    }
+}
+
+/// Replicate the include flags passed to clang in order to tell it to use
+/// Zig's bundled C stdlib. From addCCArgs in src/Compilation.zig of the
+/// compiler. This enables finding standard library C and C++ headers.
+fn appendBundledLibcIncludeFlags(
+    output: GenerateOutput,
+    b: *std.Build,
+    mod: *std.Build.Module,
+    target: *const std.Target,
+) !void {
+    if (!output.wantsFlags()) return;
+
+    const allocator = output.params.cc_params.allocator;
+
+    const link_libc = mod.link_libc orelse false;
+    const link_libcpp = mod.link_libcpp orelse false;
+    if (!link_libc and !link_libcpp) return;
+
+    // zig does not have a libc for every platform, for those just let the
+    // driver or --sysroot or default systemwide installation happen
+    if (!std.zig.target.canBuildLibC(target)) return;
+
+    const zig_lib_dir = try makeRelativeBuildPathAbsolute(
+        b,
+        allocator,
+        b.graph.zig_lib_directory.path orelse return,
+    );
+
+    try output.appendFlag("-nostdinc");
+
+    if (link_libcpp) {
+        try output.appendFlagSlice(&.{
+            "-isystem",
+            b.pathJoin(&.{ zig_lib_dir, "libcxx", "include" }),
+            "-isystem",
+            b.pathJoin(&.{ zig_lib_dir, "libcxxabi", "include" }),
+        });
+        try appendLibCxxDefines(output, b, mod, target);
+    }
+
+    // clang builtin headers that must be included first
+    try output.appendFlagSlice(&.{ "-isystem", b.pathJoin(&.{ zig_lib_dir, "include" }) });
+
+    const libc_dirs = try std.zig.LibCDirs.detectFromBuilding(allocator, zig_lib_dir, target);
+    for (libc_dirs.libc_include_dir_list) |include_dir| {
+        try output.appendFlagSlice(&.{ "-isystem", include_dir });
+    }
+}
+
+/// Zig does not use clang's config header and instead manually passes flags to
+/// every C++ module. This is done in addCxxArgs from src/libs/libcxx.zig, and
+/// is replicated here
+fn appendLibCxxDefines(
+    output: GenerateOutput,
+    b: *std.Build,
+    mod: *std.Build.Module,
+    target: *const std.Target,
+) !void {
+    if (!output.wantsFlags()) return;
+    const allocator = output.params.cc_params.allocator;
+
+    // see defaultSingleThreaded in src/target.zig of compiler
+    var any_non_single_threaded = false;
+    for (mod.getGraph().modules) |m| {
+        const m_target = if (m.resolved_target) |*rt| &rt.result else target;
+        const default_single_threaded = switch (m_target.cpu.arch) {
+            .wasm32, .wasm64 => true,
+            else => m_target.os.tag == .haiku,
+        };
+        if (!(m.single_threaded orelse default_single_threaded)) {
+            any_non_single_threaded = true;
+            break;
+        }
+    }
+
+    // the hardening mode is determined by libc++ build flags. See compilerRtOptMode in src/Compilation.zig
+    const debug_runtime_libs_mode: ?std.builtin.OptimizeMode = if (fcompat.is_0_16_or_newer)
+        b.graph.debug_compiler_runtime_libs
+    else if (b.graph.debug_compiler_runtime_libs)
+        .Debug
+    else
+        null;
+    const optimize_mode: std.builtin.OptimizeMode = debug_runtime_libs_mode orelse switch (mod.optimize orelse .Debug) {
+        // defaultCompilerRtOptimizeMode in src/target.zig
+        .Debug, .ReleaseSafe => if (target.cpu.arch.isWasm() and target.os.tag == .freestanding)
+            std.builtin.OptimizeMode.ReleaseSmall
+        else
+            .ReleaseFast,
+        .ReleaseFast => .ReleaseFast,
+        .ReleaseSmall => .ReleaseSmall,
+    };
+
+    const abi_version: u2 = if (target.os.tag == .emscripten) 2 else 1;
+    try output.appendFlag(try std.fmt.allocPrint(allocator, "-D_LIBCPP_ABI_VERSION={d}", .{abi_version}));
+    try output.appendFlag(try std.fmt.allocPrint(allocator, "-D_LIBCPP_ABI_NAMESPACE=__{d}", .{abi_version}));
+    try output.appendFlag(try std.fmt.allocPrint(allocator, "-D_LIBCPP_HAS_THREADS={d}", .{@intFromBool(any_non_single_threaded)}));
+    try output.appendFlag("-D_LIBCPP_HAS_MONOTONIC_CLOCK");
+    try output.appendFlag("-D_LIBCPP_HAS_TERMINAL");
+    try output.appendFlag(try std.fmt.allocPrint(allocator, "-D_LIBCPP_HAS_MUSL_LIBC={d}", .{@intFromBool(target.abi.isMusl())}));
+    try output.appendFlag("-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS");
+    try output.appendFlag("-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS");
+    try output.appendFlag("-D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=0");
+    try output.appendFlag(try std.fmt.allocPrint(allocator, "-D_LIBCPP_HAS_FILESYSTEM={d}", .{@intFromBool(target.os.tag != .wasi)}));
+    try output.appendFlag("-D_LIBCPP_HAS_RANDOM_DEVICE");
+    try output.appendFlag("-D_LIBCPP_HAS_LOCALIZATION");
+    try output.appendFlag("-D_LIBCPP_HAS_UNICODE");
+    try output.appendFlag("-D_LIBCPP_HAS_WIDE_CHARACTERS");
+    try output.appendFlag("-D_LIBCPP_HAS_NO_STD_MODULES");
+    if (target.os.tag == .linux) {
+        try output.appendFlag("-D_LIBCPP_HAS_TIME_ZONE_DATABASE");
+    }
+    // zig always uses this backend (not sure what other options there are?)
+    try output.appendFlag("-D_LIBCPP_PSTL_BACKEND_SERIAL");
+    try output.appendFlag(switch (optimize_mode) {
+        .Debug => "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG",
+        .ReleaseFast, .ReleaseSmall => "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE",
+        .ReleaseSafe => "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST",
+    });
+    if (target.isGnuLibC()) {
+        if (target.os.versionRange().gnuLibCVersion().?.order(.{ .major = 2, .minor = 16, .patch = 0 }) == .lt) {
+            try output.appendFlag("-D_LIBCPP_HAS_LIBRARY_ALIGNED_ALLOCATION=0");
+        }
+    }
+    if (!fcompat.is_0_16_or_newer) { // removed after 0.15
+        try output.appendFlag("-D_LIBCPP_ENABLE_CXX17_REMOVED_UNEXPECTED_FUNCTIONS");
+    }
 }
 
 /// Appends the transitive/public flags of a system library which is linked to some artifact `step`
@@ -367,7 +557,7 @@ pub fn compileStepPathDependencies(
 
 pub fn compileStepToCompileCommandEntries(
     step: *std.Build.Step.Compile,
-    driver: ?[]const u8,
+    options: Options,
     output: *std.ArrayList(CompileCommandEntry),
     do_later: *std.ArrayList(*std.Build.Step.Compile),
 ) !void {
@@ -375,7 +565,7 @@ pub fn compileStepToCompileCommandEntries(
     const intermediate_output = GenerateOutput{ .params = .{ .cc_params = .{
         .params = .{
             .output = output,
-            .driver = driver,
+            .options = options,
         },
         .allocator = step.step.owner.allocator,
         .flags = &flags,
@@ -409,7 +599,7 @@ fn generateCompileCommandEntriesOrGatherDependencies(
 
         for (step.getCompileDependencies(false)) |dep_compile| {
             const my_responsibility = dep_compile == step;
-            if (!my_responsibility and std.mem.find(*std.Build.Step.Compile, do_later.items, &.{dep_compile}) == null) {
+            if (!my_responsibility and find(*std.Build.Step.Compile, do_later.items, &.{dep_compile}) == null) {
                 try do_later.append(b.allocator, dep_compile);
             }
 
@@ -497,7 +687,15 @@ fn generateCompileCommandEntriesOrGatherDependencies(
     }
 
     switch (output.params) {
-        .cc_params => |params| return file_flags.finish(b, params.flags.items, params.params.driver, params.params.output),
+        .cc_params => |params| return file_flags.finish(b, params.flags.items, params.params.options.driver, params.params.output),
         .lazy_path_params => {},
+    }
+}
+
+fn find(comptime T: type, haystack: []const T, needle: []const T) ?usize {
+    if (fcompat.is_0_16_or_newer) {
+        return std.mem.find(T, haystack, needle);
+    } else {
+        return std.mem.indexOf(T, haystack, needle);
     }
 }

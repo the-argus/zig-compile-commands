@@ -60,7 +60,10 @@ pub fn build(b: *std.Build) !void {
     // This function returns the step. One thing you might use this for is to
     // make it a dependency of the main install step of the std.Build, so that
     // `zig build` also generates the compile_commands.json.
-    _ = zcc.createStep(b, "cdb", targets.toOwnedSlice(b.allocator) catch @panic("OOM"));
+    _ = zcc.createStep(b, .{
+        .name = "cdb",
+        .targets = targets.toOwnedSlice(b.allocator) catch @panic("OOM"),
+    });
 }
 ```
 

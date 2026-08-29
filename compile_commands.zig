@@ -3,18 +3,29 @@ const builtin = @import("builtin");
 const fcompat = @import("file_compat.zig");
 const get_flags = @import("get_flags.zig");
 
-var static_options: CompileCommandOptions = .{};
-
 const CSourceFiles = std.Build.Module.CSourceFiles;
 const LazyPath = std.Build.LazyPath;
 const TargetsSlice = []*std.Build.Step.Compile;
 
+pub const CompileCommandOptions = struct {
+    name: []const u8,
+    targets: []*std.Build.Step.Compile,
+    // Alternative command driver path (eg: /usr/local/bin/clang++)
+    // It will use `clang` if not specified this.
+    driver: ?[]const u8 = null,
+    // Include many flags specifying all the features of the specific
+    // target cpu. makes compile_commands.json a much much larger file, but may
+    // fix some incorrect LSP stuff indicating, for example, whether simd
+    // extensions are available
+    include_cpu_features: bool = false,
+};
+
 const CompileCommandsStep = struct {
     step: std.Build.Step,
     compile_steps: TargetsSlice,
-    options: CompileCommandOptions = .{},
+    options: CompileCommandOptions,
 
-    fn create(b: *std.Build, targets: TargetsSlice, cc_options: CompileCommandOptions) *CompileCommandsStep {
+    fn create(b: *std.Build, options: CompileCommandOptions) *CompileCommandsStep {
         const self = b.allocator.create(@This()) catch @panic("Allocation failure, probably OOM");
         self.* = .{
             .step = std.Build.Step.init(.{
@@ -23,8 +34,8 @@ const CompileCommandsStep = struct {
                 .makeFn = makeCdb,
                 .owner = b,
             }),
-            .compile_steps = targets,
-            .options = cc_options,
+            .compile_steps = options.targets,
+            .options = options,
         };
         return self;
     }
@@ -37,23 +48,17 @@ pub const CompileCommandEntry = struct {
     output: []const u8,
 };
 
-const CompileCommandOptions = struct {
-    // Alternative command driver path (eg: /usr/local/bin/clang++)
-    // It will use `clang` if not specified this.
-    driver: ?[]const u8 = null,
-};
+pub fn createStep(b: *std.Build, options: CompileCommandOptions) *std.Build.Step {
+    const step = CompileCommandsStep.create(b, options);
 
-pub fn createStep(b: *std.Build, name: []const u8, targets: TargetsSlice) *std.Build.Step {
-    const step = CompileCommandsStep.create(b, targets, static_options);
-
-    const cdb_step = b.step(name, "Create compile_commands.json");
+    const cdb_step = b.step(options.name, "Create compile_commands.json");
     cdb_step.dependOn(&step.step);
 
     // do a dummy run through generating compile commands and gather the needed LazyPaths
     var lazy_paths: std.ArrayList(LazyPath) = .empty;
     var idx: usize = 0;
     var csteps: std.ArrayList(*std.Build.Step.Compile) = .empty;
-    csteps.appendSlice(b.allocator, targets) catch @panic("OOM");
+    csteps.appendSlice(b.allocator, options.targets) catch @panic("OOM");
     while (idx < csteps.items.len) {
         defer idx += 1;
         lazy_paths.clearRetainingCapacity();
@@ -82,7 +87,7 @@ fn makeCdb(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) anye
     try csteps.appendSlice(b.allocator, cc_step.compile_steps);
     while (idx < csteps.items.len) {
         defer idx += 1;
-        try get_flags.compileStepToCompileCommandEntries(csteps.items[idx], cc_step.options.driver, &compile_commands, &csteps);
+        try get_flags.compileStepToCompileCommandEntries(csteps.items[idx], cc_step.options, &compile_commands, &csteps);
     }
 
     const cwd_string = try fcompat.getCwd(b);
@@ -127,12 +132,4 @@ fn writeCompileCommands(
 
 fn linkFlag(ally: std.mem.Allocator, lib: []const u8) []const u8 {
     return std.fmt.allocPrint(ally, "-l{s}", .{lib}) catch @panic("OOM");
-}
-
-/// Returns a pointer to the options used for compile_commands.json generation.
-///
-/// The returned options are intended to be mutated in order to customize
-/// how the compilation commands are generated.
-pub fn options() *CompileCommandOptions {
-    return &static_options;
 }

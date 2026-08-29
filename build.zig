@@ -10,4 +10,6 @@ pub fn build(b: *std.Build) !void {
 
     _ = try @import("tests/integration/build.zig").transitiveBuild(b, "integration", target, optimize);
     _ = try @import("tests/config_header/build.zig").transitiveBuild(b, "config_header", target, optimize);
+    _ = try @import("tests/musl_static/build.zig").transitiveBuild(b, "musl_static", target, optimize);
+    _ = try @import("tests/musl_static_cpp/build.zig").transitiveBuild(b, "musl_static_cpp", target, optimize);
 }
