@@ -3,8 +3,8 @@
 A simple zig module to generate compile_commands.json from a slice of build
 targets. Useful if you are using zig as a build system for C/C++.
 
-Supports zig v0.16.0
-Older versions are available in the commit history, but not maintained.
+Supports zig v0.16.0. Older versions are available in the commit history, but
+not maintained.
 
 ## Example Usage
 
@@ -70,25 +70,16 @@ pub fn build(b: *std.Build) !void {
 And you're all done. Just run `zig build cdb` to generate the `compile_commands.json`
 file according to your current build graph.
 
-## Diagnostic errors show up in `.h` files
+## Go-to-definition goes to header and not to source file, and/or source files are excluded by clangd
 
-This could be for a variety of reasons, including not being in the directory
-with the `compile_commands.json` or simply having forgotten to generate it.
-However, even when doing things correctly, this may sometimes still happen. I
-believe it occurs when mixing C and C++ files, though I am not certain. It is
-has been a [known issue in clangd for a few
-years](https://github.com/clangd/clangd/issues/1138).
-
-A workaround reported on that issue is to try creating a `.clangd` file in the
-root of your project with the following contents:
-
-```yaml
-If:
-  PathMatch: .*\*.h
-
-CompileFlags:
-  Add: [-xc]
-```
+Clangd will filter out source files in a compilation commands database if those
+source files are not contained by the directory the database is in. One
+consequence of this is that `compile_commands.json` must be present in the
+folder that `zig-pkg/` is in (which it probably is, so you are probably fine)
+in order for dependencies fetched by zig to get indexed by clangd. Out of tree
+source dependencies that you try to include will not be indexed. This includes
+zig fetched dependencies in versions of zig before 0.16.0, when dependencies
+were fetched into the global cache dir.
 
 ## Building `compile_commands.json` panics
 
