@@ -3,7 +3,7 @@
 A simple zig module to generate compile_commands.json from a slice of build
 targets. Useful if you are using zig as a build system for C/C++.
 
-Supports zig v0.15.1 and v0.16.0
+Supports zig v0.16.0
 Older versions are available in the commit history, but not maintained.
 
 ## Example Usage
